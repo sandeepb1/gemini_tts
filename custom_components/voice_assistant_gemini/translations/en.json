@@ -1,0 +1,220 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Voice Assistant Gemini",
+        "description": "Configure your Voice Assistant powered by Google Gemini",
+        "data": {
+          "gemini_api_key": "Gemini API Key",
+          "stt_api_key": "Speech-to-Text API Key (optional, uses Gemini key if empty)",
+          "tts_api_key": "Text-to-Speech API Key (optional, uses Gemini key if empty)",
+          "default_language": "Default Language",
+          "stt_provider": "Speech-to-Text Provider",
+          "tts_provider": "Text-to-Speech Provider",
+          "default_voice": "Default Voice (optional)",
+          "speaking_rate": "Speaking Rate",
+          "pitch": "Pitch",
+          "volume_gain_db": "Volume Gain (dB)",
+          "ssml": "Enable SSML",
+          "gemini_model": "Gemini Model",
+          "temperature": "Temperature",
+          "max_tokens": "Max Tokens",
+          "logging_level": "Logging Level",
+          "enable_transcript_storage": "Enable Transcript Storage",
+          "transcript_retention_days": "Transcript Retention (days)"
+        },
+        "data_description": {
+          "gemini_api_key": "Your Google Gemini API key for conversation generation",
+          "stt_api_key": "API key for speech-to-text service (Google Cloud Speech)",
+          "tts_api_key": "API key for text-to-speech service (Google Cloud TTS)",
+          "default_language": "Default language for speech recognition and synthesis",
+          "stt_provider": "Service provider for speech-to-text conversion",
+          "tts_provider": "Service provider for text-to-speech synthesis",
+          "default_voice": "Default voice name for speech synthesis (leave empty for auto)",
+          "speaking_rate": "Speed of speech synthesis (0.25 to 4.0)",
+          "pitch": "Pitch adjustment for synthesized speech (-20 to 20)",
+          "volume_gain_db": "Volume gain adjustment in decibels (-96 to 16)",
+          "ssml": "Enable Speech Synthesis Markup Language support",
+          "gemini_model": "Google Gemini model to use for conversations",
+          "temperature": "Creativity level for responses (0.0 to 1.0)",
+          "max_tokens": "Maximum number of tokens in response (1 to 8192)",
+          "logging_level": "Level of detail in integration logs",
+          "enable_transcript_storage": "Store conversation transcripts for history",
+          "transcript_retention_days": "Number of days to keep conversation history"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the service. Please check your API keys and network connection.",
+      "invalid_auth": "Invalid authentication credentials. Please verify your API keys.",
+      "unknown": "Unexpected error occurred during setup."
+    },
+    "abort": {
+      "already_configured": "Voice Assistant Gemini is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Voice Assistant Gemini Options",
+        "description": "Update your Voice Assistant configuration",
+        "data": {
+          "default_language": "Default Language",
+          "stt_provider": "Speech-to-Text Provider",
+          "tts_provider": "Text-to-Speech Provider",
+          "default_voice": "Default Voice",
+          "speaking_rate": "Speaking Rate",
+          "pitch": "Pitch",
+          "volume_gain_db": "Volume Gain (dB)",
+          "ssml": "Enable SSML",
+          "gemini_model": "Gemini Model",
+          "temperature": "Temperature",
+          "max_tokens": "Max Tokens",
+          "logging_level": "Logging Level",
+          "enable_transcript_storage": "Enable Transcript Storage",
+          "transcript_retention_days": "Transcript Retention (days)"
+        }
+      }
+    }
+  },
+  "services": {
+    "stt": {
+      "name": "Speech to Text",
+      "description": "Convert speech audio to text using configured STT provider",
+      "fields": {
+        "source": {
+          "name": "Audio Source",
+          "description": "URL, file path, or entity ID containing audio data"
+        },
+        "audio_data": {
+          "name": "Audio Data",
+          "description": "Base64 encoded audio data"
+        },
+        "session_id": {
+          "name": "Session ID",
+          "description": "Optional session identifier for tracking"
+        },
+        "language": {
+          "name": "Language",
+          "description": "Language code for speech recognition"
+        },
+        "provider": {
+          "name": "Provider",
+          "description": "STT service provider to use"
+        }
+      }
+    },
+    "tts": {
+      "name": "Text to Speech",
+      "description": "Convert text to speech audio using configured TTS provider",
+      "fields": {
+        "text": {
+          "name": "Text",
+          "description": "Text to convert to speech"
+        },
+        "voice": {
+          "name": "Voice",
+          "description": "Voice name for speech synthesis"
+        },
+        "language": {
+          "name": "Language",
+          "description": "Language code for speech synthesis"
+        },
+        "provider": {
+          "name": "Provider",
+          "description": "TTS service provider to use"
+        },
+        "speaking_rate": {
+          "name": "Speaking Rate",
+          "description": "Speed of speech (0.25 to 4.0)"
+        },
+        "pitch": {
+          "name": "Pitch",
+          "description": "Pitch adjustment (-20 to 20)"
+        },
+        "volume_gain_db": {
+          "name": "Volume Gain",
+          "description": "Volume gain in decibels (-96 to 16)"
+        },
+        "ssml": {
+          "name": "SSML",
+          "description": "Enable SSML markup in text"
+        },
+        "session_id": {
+          "name": "Session ID",
+          "description": "Optional session identifier for tracking"
+        }
+      }
+    },
+    "converse": {
+      "name": "Conversation",
+      "description": "Have a conversation with Gemini AI assistant",
+      "fields": {
+        "text": {
+          "name": "Text Input",
+          "description": "Text message to send to the assistant"
+        },
+        "audio_data": {
+          "name": "Audio Data",
+          "description": "Base64 encoded audio data to transcribe"
+        },
+        "source": {
+          "name": "Audio Source",
+          "description": "URL, file path, or entity ID containing audio"
+        },
+        "session_id": {
+          "name": "Session ID",
+          "description": "Session identifier for conversation continuity"
+        },
+        "system_prompt": {
+          "name": "System Prompt",
+          "description": "System instruction to guide the assistant's behavior"
+        },
+        "model": {
+          "name": "Model",
+          "description": "Gemini model to use for generation"
+        },
+        "temperature": {
+          "name": "Temperature",
+          "description": "Creativity level (0.0 to 1.0)"
+        },
+        "max_tokens": {
+          "name": "Max Tokens",
+          "description": "Maximum response length (1 to 8192)"
+        },
+        "voice_response": {
+          "name": "Voice Response",
+          "description": "Generate audio response"
+        },
+        "language": {
+          "name": "Language",
+          "description": "Language for processing"
+        }
+      }
+    }
+  },
+  "entity": {
+    "voice_assistant_gemini": {
+      "state": {
+        "idle": "Idle",
+        "listening": "Listening",
+        "processing": "Processing",
+        "speaking": "Speaking",
+        "error": "Error"
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "conversation_started": "Conversation started",
+      "conversation_ended": "Conversation ended",
+      "speech_recognized": "Speech recognized",
+      "response_generated": "Response generated"
+    },
+    "action_type": {
+      "start_conversation": "Start conversation",
+      "stop_conversation": "Stop conversation",
+      "clear_session": "Clear session"
+    }
+  }
+} 

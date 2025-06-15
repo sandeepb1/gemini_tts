@@ -1,0 +1,11 @@
+{
+  "name": "Voice Assistant Gemini",
+  "content_in_root": false,
+  "filename": "voice_assistant_gemini.zip",
+  "country": ["US", "GB", "DE", "FR"],
+  "homeassistant": "2022.12.0",
+  "render_readme": true,
+  "domains": ["stt", "tts", "conversation"],
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/yourusername/voice_assistant_gemini/issues"
+} 

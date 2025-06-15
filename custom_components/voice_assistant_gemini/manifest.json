@@ -1,0 +1,17 @@
+{
+  "domain": "voice_assistant_gemini",
+  "name": "Voice Assistant Gemini",
+  "version": "1.0.0",
+  "documentation": "https://github.com/yourusername/voice_assistant_gemini",
+  "issue_tracker": "https://github.com/yourusername/voice_assistant_gemini/issues",
+  "dependencies": ["http"],
+  "codeowners": ["@yourusername"],
+  "requirements": [
+    "google-cloud-speech>=2.0.0",
+    "google-cloud-texttospeech>=2.0.0",
+    "google-cloud-aiplatform>=1.30.0"
+  ],
+  "config_flow": true,
+  "iot_class": "cloud_push",
+  "homeassistant": "2022.12.0"
+} 
