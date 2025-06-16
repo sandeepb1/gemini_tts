@@ -61,25 +61,30 @@ class STTClient:
     async def _validate_audio(self, audio_bytes: bytes) -> bytes:
         """Validate and convert audio format if needed."""
         try:
-            # Check if audio is WAV format
-            with io.BytesIO(audio_bytes) as audio_io:
-                with wave.open(audio_io, 'rb') as wav_file:
-                    channels = wav_file.getnchannels()
-                    sample_rate = wav_file.getframerate()
-                    sample_width = wav_file.getsampwidth()
-                    
-                    _LOGGER.debug(
-                        "Audio format: channels=%d, sample_rate=%d, sample_width=%d",
-                        channels, sample_rate, sample_width
-                    )
-                    
-                    # For Gemini API, we can accept various formats
-                    # Just return the original audio
-                    return audio_bytes
+            # Check if audio starts with RIFF header (WAV format)
+            if audio_bytes.startswith(b'RIFF'):
+                # It's a WAV file, we can parse it
+                with io.BytesIO(audio_bytes) as audio_io:
+                    with wave.open(audio_io, 'rb') as wav_file:
+                        channels = wav_file.getnchannels()
+                        sample_rate = wav_file.getframerate()
+                        sample_width = wav_file.getsampwidth()
+                        
+                        _LOGGER.debug(
+                            "WAV audio format: channels=%d, sample_rate=%d, sample_width=%d",
+                            channels, sample_rate, sample_width
+                        )
+            else:
+                # Not a WAV file, but that's okay for Gemini API
+                _LOGGER.debug("Audio format: Non-WAV format detected, size=%d bytes", len(audio_bytes))
+            
+            # For Gemini API, we can accept various formats
+            # Just return the original audio
+            return audio_bytes
         
         except Exception as err:
-            _LOGGER.debug("Audio validation failed (not WAV format): %s", err)
-            # If it's not WAV, that's fine for Gemini API
+            _LOGGER.debug("Audio validation error: %s", err)
+            # If validation fails, that's fine for Gemini API
             return audio_bytes
 
     async def transcribe(self, audio_bytes: bytes) -> str:
