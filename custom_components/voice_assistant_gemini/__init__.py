@@ -43,7 +43,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         # Refresh coordinator data
         _LOGGER.debug("Refreshing coordinator data")
-        await coordinator.async_config_entry_first_refresh()
+        try:
+            await coordinator.async_config_entry_first_refresh()
+            _LOGGER.debug("Coordinator refresh completed successfully")
+        except Exception as coord_err:
+            _LOGGER.error("Failed to refresh coordinator: %s", coord_err, exc_info=True)
+            raise
         
         # Setup services
         _LOGGER.debug("Setting up services")
@@ -71,6 +76,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as platform_err:
             _LOGGER.error("Failed to setup platforms: %s", platform_err, exc_info=True)
             raise
+        
+        # Add options update listener
+        _LOGGER.debug("Adding options update listener")
+        entry.async_on_unload(entry.add_update_listener(async_reload_entry))
         
         _LOGGER.info("Voice Assistant Gemini integration setup complete")
         return True

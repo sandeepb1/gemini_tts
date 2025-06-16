@@ -531,12 +531,17 @@ async def async_setup_entry(
     async_add_entities,
 ) -> None:
     """Set up TTS provider."""
-    # Create TTS provider
-    api_key = config_entry.data.get("tts_api_key") or config_entry.data.get("gemini_api_key")
-    language = config_entry.data.get("default_language", "en-US")
-    provider = config_entry.data.get("tts_provider", "gemini_tts")
+    # Get values from options first, then config data
+    options = config_entry.options
+    data = config_entry.data
     
-    tts_provider = GeminiTTSProvider(hass, config_entry, api_key, language, provider)
+    # Create TTS provider
+    api_key = options.get("tts_api_key") or data.get("tts_api_key") or options.get("gemini_api_key") or data.get("gemini_api_key")
+    language = options.get("default_language") or data.get("default_language", "en-US")
+    provider = options.get("tts_provider") or data.get("tts_provider", "gemini_tts")
+    model = options.get("tts_model") or data.get("tts_model", "gemini-2.5-flash-preview-tts")
+    
+    tts_provider = GeminiTTSProvider(hass, config_entry, api_key, language, provider, model)
     
     async_add_entities([tts_provider])
 
@@ -551,6 +556,7 @@ class GeminiTTSProvider(TextToSpeechEntity):
         api_key: str,
         language: str,
         provider: str,
+        model: str,
     ) -> None:
         """Initialize the TTS provider."""
         super().__init__()
@@ -558,6 +564,7 @@ class GeminiTTSProvider(TextToSpeechEntity):
         self.config_entry = config_entry
         self.provider = provider  # Store provider attribute
         self.language = language  # Store language attribute
+        self.model = model  # Store model attribute
         self._client = TTSClient(hass, api_key, language, provider)
         self._attr_name = f"Gemini TTS ({provider})"
         self._attr_unique_id = f"{config_entry.entry_id}_tts"
@@ -584,14 +591,14 @@ class GeminiTTSProvider(TextToSpeechEntity):
     @property
     def default_language(self) -> str:
         """Return the default language."""
-        return self.config_entry.data.get("default_language", "en-US")
+        options = self.config_entry.options
+        data = self.config_entry.data
+        return options.get("default_language") or data.get("default_language", "en-US")
 
     @property
     def supported_options(self) -> list[str]:
         """Return list of supported options."""
         return ["voice", "speed", "pitch"]
-
-
 
     @property
     def supported_voices(self) -> list[TTSVoice]:
@@ -680,6 +687,13 @@ class GeminiTTSProvider(TextToSpeechEntity):
             
             # Extract options
             voice = options.get("voice", "")
+            
+            # Use default voice from config if no voice specified
+            if not voice:
+                config_options = self.config_entry.options
+                config_data = self.config_entry.data
+                voice = config_options.get("default_voice") or config_data.get("default_voice", "Kore")
+            
             speaking_rate = float(options.get("speed", 1.0))
             pitch = float(options.get("pitch", 0.0))
             volume_gain_db = 0.0

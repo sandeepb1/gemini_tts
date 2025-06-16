@@ -45,10 +45,12 @@ from .const import (
     SERVICE_CONVERSE,
     SERVICE_STT,
     SERVICE_TTS,
+    GEMINI_VOICES,
 )
 from .conversation import GeminiAgent
 from .stt import STTClient
 from .tts import TTSClient
+from .gemini_client import GeminiClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,8 +98,45 @@ SERVICE_CONVERSE_SCHEMA = vol.Schema({
     vol.Optional("language", default=DEFAULT_LANGUAGE): cv.string,
 })
 
+PREVIEW_VOICE_SCHEMA = vol.Schema(
+    {
+        vol.Required("voice"): vol.In(GEMINI_VOICES),
+        vol.Optional("text", default="Hello! This is a preview of the selected voice."): cv.string,
+        vol.Optional("api_key"): cv.string,
+    }
+)
 
-async def async_setup_services(hass: HomeAssistant) -> None:
+STT_SCHEMA = vol.Schema(
+    {
+        vol.Required("audio_file"): cv.string,
+        vol.Optional("language", default="en-US"): cv.string,
+    }
+)
+
+TTS_SCHEMA = vol.Schema(
+    {
+        vol.Required("text"): cv.string,
+        vol.Optional("voice", default="Kore"): vol.In(GEMINI_VOICES),
+        vol.Optional("language", default="en-US"): cv.string,
+        vol.Optional("speaking_rate", default=1.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.25, max=4.0)
+        ),
+        vol.Optional("pitch", default=0.0): vol.All(
+            vol.Coerce(float), vol.Range(min=-20.0, max=20.0)
+        ),
+    }
+)
+
+CONVERSE_SCHEMA = vol.Schema(
+    {
+        vol.Required("text"): cv.string,
+        vol.Optional("session_id"): cv.string,
+        vol.Optional("system_prompt"): cv.string,
+    }
+)
+
+
+async def async_setup_services(hass: HomeAssistant) -> bool:
     """Set up services for Voice Assistant Gemini."""
     
     try:
@@ -330,6 +369,186 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 _LOGGER.error("Conversation service error: %s", err)
                 call.async_set_result({"error": str(err)})
 
+        async def preview_voice_service(call: ServiceCall) -> None:
+            """Preview a voice by generating sample audio."""
+            try:
+                voice = call.data["voice"]
+                text = call.data.get("text", "Hello! This is a preview of the selected voice.")
+                api_key = call.data.get("api_key")
+                
+                # Get API key from service call or first available config entry
+                if not api_key:
+                    entries = hass.config_entries.async_entries(DOMAIN)
+                    if not entries:
+                        _LOGGER.error("No Voice Assistant Gemini integration configured")
+                        return
+                    
+                    entry = entries[0]
+                    api_key = entry.data.get("gemini_api_key")
+                    if not api_key:
+                        _LOGGER.error("No API key available for voice preview")
+                        return
+                
+                # Create Gemini client and generate preview
+                client = GeminiClient(api_key, hass)
+                
+                try:
+                    audio_data = await client.generate_speech(text, voice)
+                    
+                    # Save preview audio to media folder
+                    import os
+                    from homeassistant.util import dt as dt_util
+                    
+                    media_dir = hass.config.path("media", "voice_assistant_gemini")
+                    os.makedirs(media_dir, exist_ok=True)
+                    
+                    timestamp = dt_util.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"voice_preview_{voice}_{timestamp}.wav"
+                    filepath = os.path.join(media_dir, filename)
+                    
+                    # Convert PCM to WAV format
+                    def _pcm_to_wav(pcm_data: bytes) -> bytes:
+                        """Convert raw PCM data to WAV format."""
+                        import struct
+                        
+                        # Gemini TTS returns 16-bit signed little-endian PCM at 24kHz, mono
+                        sample_rate = 24000
+                        channels = 1
+                        bits_per_sample = 16
+                        
+                        # Calculate sizes
+                        byte_rate = sample_rate * channels * bits_per_sample // 8
+                        block_align = channels * bits_per_sample // 8
+                        data_size = len(pcm_data)
+                        file_size = 36 + data_size
+                        
+                        # Create WAV header
+                        wav_header = struct.pack('<4sI4s4sIHHIIHH4sI',
+                            b'RIFF',           # ChunkID
+                            file_size,         # ChunkSize
+                            b'WAVE',           # Format
+                            b'fmt ',           # Subchunk1ID
+                            16,                # Subchunk1Size (PCM)
+                            1,                 # AudioFormat (PCM)
+                            channels,          # NumChannels
+                            sample_rate,       # SampleRate
+                            byte_rate,         # ByteRate
+                            block_align,       # BlockAlign
+                            bits_per_sample,   # BitsPerSample
+                            b'data',           # Subchunk2ID
+                            data_size          # Subchunk2Size
+                        )
+                        
+                        # Combine header and data
+                        return wav_header + pcm_data
+                    
+                    wav_data = _pcm_to_wav(audio_data)
+                    
+                    with open(filepath, "wb") as f:
+                        f.write(wav_data)
+                    
+                    # Fire event with preview info
+                    hass.bus.async_fire(
+                        "voice_assistant_gemini_voice_preview",
+                        {
+                            "voice": voice,
+                            "text": text,
+                            "file_path": filepath,
+                            "media_url": f"/media/voice_assistant_gemini/{filename}",
+                            "success": True,
+                        }
+                    )
+                    
+                    _LOGGER.info("Voice preview generated for %s: %s", voice, filename)
+                    
+                except Exception as err:
+                    _LOGGER.error("Failed to generate voice preview: %s", err)
+                    hass.bus.async_fire(
+                        "voice_assistant_gemini_voice_preview",
+                        {
+                            "voice": voice,
+                            "text": text,
+                            "error": str(err),
+                            "success": False,
+                        }
+                    )
+            
+            except Exception as err:
+                _LOGGER.error("Voice preview service error: %s", err)
+
+        async def stt_service(call: ServiceCall) -> None:
+            """Speech-to-text service."""
+            try:
+                # Get the first available coordinator
+                entries = hass.config_entries.async_entries(DOMAIN)
+                if not entries:
+                    _LOGGER.error("No Voice Assistant Gemini integration configured")
+                    return
+                
+                entry = entries[0]
+                coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+                
+                audio_file = call.data["audio_file"]
+                language = call.data.get("language", "en-US")
+                
+                # Process STT request through coordinator
+                result = await coordinator.async_stt(audio_file, language)
+                
+                # Fire event with result
+                hass.bus.async_fire(
+                    "voice_assistant_gemini_stt_result",
+                    {
+                        "audio_file": audio_file,
+                        "language": language,
+                        "transcript": result.get("transcript", ""),
+                        "confidence": result.get("confidence", 0.0),
+                        "success": result.get("success", False),
+                    }
+                )
+            
+            except Exception as err:
+                _LOGGER.error("STT service error: %s", err)
+
+        async def tts_service(call: ServiceCall) -> None:
+            """Text-to-speech service."""
+            try:
+                # Get the first available coordinator
+                entries = hass.config_entries.async_entries(DOMAIN)
+                if not entries:
+                    _LOGGER.error("No Voice Assistant Gemini integration configured")
+                    return
+                
+                entry = entries[0]
+                coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+                
+                text = call.data["text"]
+                voice = call.data.get("voice", "Kore")
+                language = call.data.get("language", "en-US")
+                speaking_rate = call.data.get("speaking_rate", 1.0)
+                pitch = call.data.get("pitch", 0.0)
+                
+                # Process TTS request through coordinator
+                result = await coordinator.async_tts(
+                    text, voice, language, speaking_rate, pitch
+                )
+                
+                # Fire event with result
+                hass.bus.async_fire(
+                    "voice_assistant_gemini_tts_result",
+                    {
+                        "text": text,
+                        "voice": voice,
+                        "language": language,
+                        "speaking_rate": speaking_rate,
+                        "pitch": pitch,
+                        "result": result,
+                    }
+                )
+            
+            except Exception as err:
+                _LOGGER.error("TTS service error: %s", err)
+                call.async_set_result({"error": str(err)})
+
         # Register services
         hass.services.async_register(
             DOMAIN, SERVICE_STT, async_handle_stt, schema=SERVICE_STT_SCHEMA
@@ -343,11 +562,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             DOMAIN, SERVICE_CONVERSE, async_handle_converse, schema=SERVICE_CONVERSE_SCHEMA
         )
         
+        hass.services.async_register(
+            DOMAIN, "preview_voice", preview_voice_service, schema=PREVIEW_VOICE_SCHEMA
+        )
+        
         _LOGGER.info("Voice Assistant Gemini services registered")
     
     except Exception as err:
         _LOGGER.error("Failed to set up Voice Assistant Gemini services: %s", err, exc_info=True)
         raise
+
+    # Explicitly return to indicate success
+    return True
 
 
 async def _get_audio_from_source(hass: HomeAssistant, source: str) -> bytes:

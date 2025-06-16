@@ -323,11 +323,15 @@ async def async_setup_entry(
     """Set up conversation provider."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
     
+    # Get values from options first, then config data
+    options = config_entry.options
+    data = config_entry.data
+    
     # Create conversation agent
-    api_key = config_entry.data.get("gemini_api_key")
-    model = config_entry.data.get("gemini_model", "gemini-2.0-flash")
-    temperature = config_entry.data.get("temperature", 0.7)
-    max_tokens = config_entry.data.get("max_tokens", 2048)
+    api_key = options.get("gemini_api_key") or data.get("gemini_api_key")
+    model = options.get("conversation_model") or data.get("conversation_model") or options.get("gemini_model") or data.get("gemini_model", "gemini-2.0-flash")
+    temperature = options.get("temperature") or data.get("temperature", 0.7)
+    max_tokens = options.get("max_tokens") or data.get("max_tokens", 2048)
     
     agent = GeminiConversationProvider(
         hass, config_entry, api_key, model, temperature, max_tokens, coordinator

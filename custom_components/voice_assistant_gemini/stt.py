@@ -274,12 +274,17 @@ async def async_setup_entry(
     async_add_entities,
 ) -> None:
     """Set up STT provider."""
-    # Create STT provider
-    api_key = config_entry.data.get("stt_api_key") or config_entry.data.get("gemini_api_key")
-    language = config_entry.data.get("default_language", "en-US")
-    provider = config_entry.data.get("stt_provider", "google_cloud")
+    # Get values from options first, then config data
+    options = config_entry.options
+    data = config_entry.data
     
-    stt_provider = GeminiSTTProvider(hass, config_entry, api_key, language, provider)
+    # Create STT provider
+    api_key = options.get("stt_api_key") or data.get("stt_api_key") or options.get("gemini_api_key") or data.get("gemini_api_key")
+    language = options.get("default_language") or data.get("default_language", "en-US")
+    provider = options.get("stt_provider") or data.get("stt_provider", "google_cloud")
+    model = options.get("stt_model") or data.get("stt_model", "gemini-2.0-flash")
+    
+    stt_provider = GeminiSTTProvider(hass, config_entry, api_key, language, provider, model)
     
     async_add_entities([stt_provider])
 
@@ -294,6 +299,7 @@ class GeminiSTTProvider(SpeechToTextEntity):
         api_key: str,
         language: str,
         provider: str,
+        model: str,
     ) -> None:
         """Initialize the STT provider."""
         self.hass = hass
@@ -302,6 +308,7 @@ class GeminiSTTProvider(SpeechToTextEntity):
         self._attr_name = f"Gemini STT ({provider})"
         self._attr_unique_id = f"{config_entry.entry_id}_stt"
         self._attr_entity_category = EntityCategory.CONFIG
+        self.model = model
 
     @property
     def name(self) -> str:

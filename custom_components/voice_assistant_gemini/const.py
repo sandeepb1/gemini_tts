@@ -18,6 +18,9 @@ CONF_PITCH: Final = "pitch"
 CONF_VOLUME_GAIN_DB: Final = "volume_gain_db"
 CONF_SSML: Final = "ssml"
 CONF_GEMINI_MODEL: Final = "gemini_model"
+CONF_CONVERSATION_MODEL: Final = "conversation_model"
+CONF_TTS_MODEL: Final = "tts_model"
+CONF_STT_MODEL: Final = "stt_model"
 CONF_TEMPERATURE: Final = "temperature"
 CONF_MAX_TOKENS: Final = "max_tokens"
 CONF_LOGGING_LEVEL: Final = "logging_level"
@@ -33,6 +36,9 @@ DEFAULT_PITCH: Final = 0.0
 DEFAULT_VOLUME_GAIN_DB: Final = 0.0
 DEFAULT_SSML: Final = False
 DEFAULT_GEMINI_MODEL: Final = "gemini-2.0-flash"
+DEFAULT_CONVERSATION_MODEL: Final = "gemini-2.0-flash"
+DEFAULT_TTS_MODEL: Final = "gemini-2.5-flash-preview-tts"
+DEFAULT_STT_MODEL: Final = "gemini-2.0-flash"
 DEFAULT_TEMPERATURE: Final = 0.7
 DEFAULT_MAX_TOKENS: Final = 2048
 DEFAULT_LOGGING_LEVEL: Final = "INFO"
@@ -64,8 +70,69 @@ TTS_PROVIDERS: Final = ["gemini_tts", "google_cloud", "amazon_polly", "azure_tts
 # Gemini models
 GEMINI_MODELS: Final = ["gemini-2.0-flash", "gemini-2.5-flash-preview-tts", "gemini-pro", "gemini-pro-vision", "gemini-ultra"]
 
+# Conversation models with recommendations
+CONVERSATION_MODELS: Final = {
+    "gemini-2.0-flash": "Gemini 2.0 Flash (Recommended - Fast & Accurate)",
+    "gemini-pro": "Gemini Pro (Balanced Performance)",
+    "gemini-ultra": "Gemini Ultra (Highest Quality, Slower)",
+}
+
+# TTS models with recommendations
+TTS_MODELS: Final = {
+    "gemini-2.5-flash-preview-tts": "Gemini 2.5 Flash TTS (Recommended - Natural Voices)",
+    "gemini-2.0-flash": "Gemini 2.0 Flash (Basic TTS)",
+}
+
+# STT models with recommendations
+STT_MODELS: Final = {
+    "gemini-2.0-flash": "Gemini 2.0 Flash (Recommended - Fast Recognition)",
+    "gemini-pro": "Gemini Pro (Higher Accuracy)",
+}
+
+# Voice descriptions for better UX
+GEMINI_VOICE_DESCRIPTIONS: Final = {
+    "Kore": "Kore - Firm and confident tone",
+    "Puck": "Puck - Upbeat and energetic",
+    "Zephyr": "Zephyr - Bright and clear",
+    "Charon": "Charon - Informative and professional",
+    "Fenrir": "Fenrir - Excitable and dynamic",
+    "Leda": "Leda - Youthful and friendly",
+    "Orus": "Orus - Firm and authoritative",
+    "Aoede": "Aoede - Breezy and casual",
+    "Callirrhoe": "Callirrhoe - Easy-going and relaxed",
+    "Autonoe": "Autonoe - Bright and articulate",
+    "Enceladus": "Enceladus - Breathy and soft",
+    "Iapetus": "Iapetus - Clear and precise",
+    "Umbriel": "Umbriel - Easy-going and smooth",
+    "Algieba": "Algieba - Smooth and polished",
+    "Despina": "Despina - Smooth and gentle",
+    "Erinome": "Erinome - Clear and direct",
+    "Algenib": "Algenib - Gravelly and distinctive",
+    "Rasalgethi": "Rasalgethi - Informative and knowledgeable",
+    "Laomedeia": "Laomedeia - Upbeat and lively",
+    "Achernar": "Achernar - Soft and warm",
+    "Alnilam": "Alnilam - Firm and steady",
+    "Schedar": "Schedar - Even and balanced",
+    "Gacrux": "Gacrux - Mature and experienced",
+    "Pulcherrima": "Pulcherrima - Forward and confident",
+    "Achird": "Achird - Friendly and approachable",
+    "Zubenelgenubi": "Zubenelgenubi - Casual and conversational",
+    "Vindemiatrix": "Vindemiatrix - Gentle and soothing",
+    "Sadachbia": "Sadachbia - Lively and animated",
+    "Sadaltager": "Sadaltager - Knowledgeable and wise",
+    "Sulafat": "Sulafat - Warm and inviting",
+}
+
 # Logging levels
 LOGGING_LEVELS: Final = ["DEBUG", "INFO", "WARNING", "ERROR"]
+
+# Available Gemini TTS voices
+GEMINI_VOICES: Final = [
+    "Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede", "Callirrhoe",
+    "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba", "Despina", "Erinome", 
+    "Algenib", "Rasalgethi", "Laomedeia", "Achernar", "Alnilam", "Schedar", "Gacrux", 
+    "Pulcherrima", "Achird", "Zubenelgenubi", "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat"
+]
 
 # Audio settings
 AUDIO_SAMPLE_RATE: Final = 16000
