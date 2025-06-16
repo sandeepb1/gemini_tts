@@ -216,6 +216,55 @@ class GeminiClient:
             _LOGGER.error(f"Error in conversation: {e}")
             raise GeminiAPIError(f"Conversation failed: {e}")
     
+    async def transcribe_audio(self, audio_data: bytes, language: str = "en-US") -> str:
+        """Transcribe audio using Gemini API."""
+        try:
+            # Convert audio to base64
+            audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+            
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {
+                            "text": f"Please transcribe this audio to text in {language}:"
+                        },
+                        {
+                            "inlineData": {
+                                "mimeType": "audio/wav",
+                                "data": audio_b64
+                            }
+                        }
+                    ]
+                }],
+                "generationConfig": {
+                    "temperature": 0.1,  # Low temperature for accurate transcription
+                    "maxOutputTokens": 1000
+                }
+            }
+            
+            endpoint = f"models/{GEMINI_MODELS['text']}:generateContent"
+            
+            response = await self._make_request(endpoint, payload)
+            
+            # Extract transcription from response
+            if "candidates" in response and response["candidates"]:
+                candidate = response["candidates"][0]
+                if "content" in candidate and "parts" in candidate["content"]:
+                    parts = candidate["content"]["parts"]
+                    if parts and "text" in parts[0]:
+                        transcription = parts[0]["text"].strip()
+                        # Clean up the transcription (remove any prefixes like "Transcription:")
+                        if transcription.lower().startswith("transcription:"):
+                            transcription = transcription[14:].strip()
+                        return transcription
+            
+            _LOGGER.error(f"Unexpected STT response format: {response}")
+            raise GeminiAPIError("Unexpected STT response format")
+            
+        except Exception as e:
+            _LOGGER.error(f"Error transcribing audio: {e}")
+            raise GeminiAPIError(f"Audio transcription failed: {e}")
+
     async def test_connection(self) -> bool:
         """Test the connection to Gemini API."""
         try:
