@@ -115,7 +115,7 @@ class STTClient:
             raise RuntimeError(f"Speech transcription failed: {err}") from err
 
     async def _transcribe_gemini(self, audio_bytes: bytes) -> str:
-        """Transcribe using Gemini API."""
+        """Transcribe using Gemini Live API."""
         try:
             # Validate audio data
             if not audio_bytes or len(audio_bytes) == 0:
@@ -129,25 +129,20 @@ class STTClient:
             
             client = await self._get_gemini_client()
             
-            _LOGGER.debug(f"Transcribing audio with Gemini API, size: {len(audio_bytes)} bytes")
+            _LOGGER.debug(f"Transcribing audio with Gemini Live API, size: {len(audio_bytes)} bytes")
             
-            # Use Gemini API for transcription
-            transcript = await client.transcribe_audio(audio_bytes, self.language)
+            # Use the new Live API transcription method
+            result = await client.transcribe_audio(audio_bytes, self.language)
             
-            if not transcript:
-                _LOGGER.warning("No speech detected in audio")
-                return ""
+            if not result:
+                raise RuntimeError("Empty transcription result")
             
-            _LOGGER.debug("Gemini transcription result: %s", transcript)
-            self._retry_count = 0  # Reset retry count on success
-            return transcript
-        
-        except GeminiAPIError as err:
-            _LOGGER.error("Gemini API transcription error: %s", err)
-            raise RuntimeError(f"Gemini transcription failed: {err}") from err
-        except Exception as err:
-            _LOGGER.error("Gemini transcription error: %s", err)
-            raise
+            _LOGGER.debug(f"Gemini Live API transcription successful: {result}")
+            return result
+            
+        except Exception as e:
+            _LOGGER.error(f"Gemini Live API transcription error: {e}")
+            raise RuntimeError(f"Audio transcription failed: {e}")
 
     async def _transcribe_vosk(self, audio_bytes: bytes) -> str:
         """Transcribe using Vosk (offline)."""

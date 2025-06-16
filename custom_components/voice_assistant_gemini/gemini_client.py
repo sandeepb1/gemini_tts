@@ -1,6 +1,7 @@
 """Gemini API client for Voice Assistant integration."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -233,144 +234,153 @@ class GeminiClient:
             raise GeminiAPIError(f"Conversation failed: {e}")
     
     async def transcribe_audio(self, audio_data: bytes, language: str = "en-US") -> str:
-        """Transcribe audio using Gemini API."""
+        """Transcribe audio using Gemini Live API."""
         try:
             # Debug: Check the first few bytes of audio data
             first_bytes = audio_data[:16] if len(audio_data) >= 16 else audio_data
             _LOGGER.debug(f"Audio data first 16 bytes: {first_bytes}")
-            _LOGGER.debug(f"Audio data starts with RIFF: {audio_data.startswith(b'RIFF')}")
             _LOGGER.debug(f"Audio data size: {len(audio_data)} bytes")
             
             # Detect if this is raw PCM data (common for ESPHome/voice assistants)
-            is_raw_pcm = False
-            
             if audio_data.startswith(b'RIFF'):
                 # Check if it's a proper WAV file (RIFF + WAVE)
                 if len(audio_data) >= 12 and audio_data[8:12] == b'WAVE':
-                    mime_type = "audio/wav"
                     _LOGGER.debug("Detected proper WAV format (RIFF+WAVE)")
+                    # Extract PCM data from WAV file
+                    audio_data = self._extract_pcm_from_wav(audio_data)
                 else:
-                    _LOGGER.debug("RIFF format but not WAVE - treating as audio/wav")
-                    mime_type = "audio/wav"
+                    _LOGGER.debug("RIFF format but not WAVE - treating as raw PCM")
             elif audio_data.startswith(b'\xff\xfb') or audio_data.startswith(b'\xff\xf3') or audio_data.startswith(b'\xff\xf2'):
-                mime_type = "audio/mp3"
-                _LOGGER.debug("Detected MP3 format")
+                _LOGGER.error("MP3 format not supported for Live API transcription")
+                raise GeminiAPIError("MP3 format not supported for Live API transcription")
             elif audio_data.startswith(b'fLaC'):
-                mime_type = "audio/flac"
-                _LOGGER.debug("Detected FLAC format")
+                _LOGGER.error("FLAC format not supported for Live API transcription")
+                raise GeminiAPIError("FLAC format not supported for Live API transcription")
             elif audio_data.startswith(b'OggS'):
-                mime_type = "audio/ogg"
-                _LOGGER.debug("Detected OGG format")
+                _LOGGER.error("OGG format not supported for Live API transcription")
+                raise GeminiAPIError("OGG format not supported for Live API transcription")
             else:
                 # This is likely raw PCM data from ESPHome
                 _LOGGER.info(f"No recognized audio header found, treating as raw PCM data")
                 _LOGGER.info(f"Raw PCM data size: {len(audio_data)} bytes, first 16 bytes: {first_bytes.hex()}")
-                is_raw_pcm = True
-                mime_type = "audio/wav"
-                
-                # Create proper WAV header for raw PCM data
-                # ESPHome typically sends 16kHz, 16-bit, mono PCM
-                audio_data = self._create_wav_from_pcm(audio_data)
-                _LOGGER.info(f"Created WAV container from raw PCM, new size: {len(audio_data)} bytes")
             
-            # Convert audio to base64
-            audio_b64 = base64.b64encode(audio_data).decode('utf-8')
-            _LOGGER.debug(f"Using MIME type: {mime_type} for audio transcription")
-            
-            # Use the correct payload format for audio transcription
-            payload = {
-                "contents": [{
-                    "parts": [
-                        {
-                            "text": "Please transcribe the speech in this audio."
-                        },
-                        {
-                            "inlineData": {
-                                "mimeType": mime_type,
-                                "data": audio_b64
-                            }
-                        }
-                    ]
-                }],
-                "generationConfig": {
-                    "temperature": 0.1,  # Low temperature for accurate transcription
-                    "maxOutputTokens": 1000
-                }
-            }
-            
-            # Use gemini-2.0-flash which supports audio transcription
-            endpoint = f"models/gemini-2.0-flash:generateContent"
-            
-            response = await self._make_request(endpoint, payload)
-            
-            # Extract transcription from response
-            if "candidates" in response and response["candidates"]:
-                candidate = response["candidates"][0]
-                if "content" in candidate and "parts" in candidate["content"]:
-                    parts = candidate["content"]["parts"]
-                    if parts and "text" in parts[0]:
-                        transcription = parts[0]["text"].strip()
-                        # Clean up the transcription (remove any prefixes like "Transcription:")
-                        transcription_lower = transcription.lower()
-                        if transcription_lower.startswith("transcription:"):
-                            transcription = transcription[14:].strip()
-                        elif transcription_lower.startswith("transcript:"):
-                            transcription = transcription[11:].strip()
-                        elif transcription_lower.startswith("the transcription is:"):
-                            transcription = transcription[21:].strip()
-                        elif transcription_lower.startswith("speech transcription:"):
-                            transcription = transcription[21:].strip()
-                        return transcription
-            
-            _LOGGER.error(f"Unexpected STT response format: {response}")
-            raise GeminiAPIError("Unexpected STT response format")
+            # Use Live API for audio transcription
+            return await self._transcribe_with_live_api(audio_data)
             
         except Exception as e:
             _LOGGER.error(f"Error transcribing audio: {e}")
             raise GeminiAPIError(f"Audio transcription failed: {e}")
 
-    def _create_wav_from_pcm(self, pcm_data: bytes) -> bytes:
-        """Create a WAV file from raw PCM data."""
-        # Assume standard ESPHome parameters: 16kHz, 16-bit, mono
-        sample_rate = 16000
-        bits_per_sample = 16
-        channels = 1
-        
-        # Calculate derived values
-        byte_rate = sample_rate * channels * bits_per_sample // 8
-        block_align = channels * bits_per_sample // 8
-        data_size = len(pcm_data)
-        file_size = 36 + data_size
-        
-        _LOGGER.debug(f"Creating WAV header: sample_rate={sample_rate}, channels={channels}, bits_per_sample={bits_per_sample}")
-        _LOGGER.debug(f"PCM data size: {data_size}, expected file size: {file_size + 8}")
-        
-        # Create WAV header
-        header = bytearray()
-        
-        # RIFF header
-        header.extend(b'RIFF')
-        header.extend(file_size.to_bytes(4, 'little'))
-        header.extend(b'WAVE')
-        
-        # fmt chunk
-        header.extend(b'fmt ')
-        header.extend((16).to_bytes(4, 'little'))  # Subchunk1Size (16 for PCM)
-        header.extend((1).to_bytes(2, 'little'))   # AudioFormat (1 for PCM)
-        header.extend(channels.to_bytes(2, 'little'))
-        header.extend(sample_rate.to_bytes(4, 'little'))
-        header.extend(byte_rate.to_bytes(4, 'little'))
-        header.extend(block_align.to_bytes(2, 'little'))
-        header.extend(bits_per_sample.to_bytes(2, 'little'))
-        
-        # data chunk
-        header.extend(b'data')
-        header.extend(data_size.to_bytes(4, 'little'))
-        
-        wav_data = bytes(header) + pcm_data
-        _LOGGER.debug(f"Created WAV file with header size: {len(header)} bytes, total size: {len(wav_data)} bytes")
-        
-        return wav_data
+    async def _transcribe_with_live_api(self, pcm_data: bytes) -> str:
+        """Transcribe audio using Gemini Live API."""
+        try:
+            from google.genai import types
+            
+            # Configure Live API session for text output
+            config = types.LiveConnectConfig(
+                response_modalities=["TEXT"],
+                input_audio_transcription={}  # Enable input transcription
+            )
+            
+            _LOGGER.debug(f"Starting Live API session for transcription")
+            
+            # Create Live API session
+            async with self.client.aio.live.connect(
+                model="gemini-2.0-flash-live-001", 
+                config=config
+            ) as session:
+                
+                # Send audio data as realtime input
+                await session.send_realtime_input(
+                    audio=types.Blob(
+                        data=pcm_data, 
+                        mime_type="audio/pcm;rate=16000"
+                    )
+                )
+                
+                # Wait for transcription response
+                transcription = ""
+                timeout_seconds = 10
+                
+                try:
+                    async with asyncio.timeout(timeout_seconds):
+                        async for response in session.receive():
+                            # Check for input transcription
+                            if (hasattr(response, 'server_content') and 
+                                response.server_content and 
+                                hasattr(response.server_content, 'input_transcription') and
+                                response.server_content.input_transcription):
+                                
+                                transcription += response.server_content.input_transcription.text
+                                _LOGGER.debug(f"Received transcription: {response.server_content.input_transcription.text}")
+                            
+                            # Check for text response (alternative transcription method)
+                            if response.text:
+                                transcription += response.text
+                                _LOGGER.debug(f"Received text response: {response.text}")
+                            
+                            # Check if turn is complete
+                            if (hasattr(response, 'server_content') and 
+                                response.server_content and 
+                                hasattr(response.server_content, 'turn_complete') and
+                                response.server_content.turn_complete):
+                                _LOGGER.debug("Turn complete signal received")
+                                break
+                                
+                except asyncio.TimeoutError:
+                    _LOGGER.warning(f"Transcription timeout after {timeout_seconds} seconds")
+                    if not transcription:
+                        raise GeminiAPIError("Transcription timeout - no response received")
+                
+                if transcription:
+                    # Clean up the transcription
+                    transcription = transcription.strip()
+                    _LOGGER.info(f"Transcription successful: {transcription}")
+                    return transcription
+                else:
+                    _LOGGER.warning("No transcription received from Live API")
+                    raise GeminiAPIError("No transcription received")
+                    
+        except Exception as e:
+            _LOGGER.error(f"Live API transcription error: {e}")
+            raise GeminiAPIError(f"Live API transcription failed: {e}")
+
+    def _extract_pcm_from_wav(self, wav_data: bytes) -> bytes:
+        """Extract PCM data from WAV file."""
+        try:
+            # Simple WAV parser to extract PCM data
+            # WAV format: RIFF header (12 bytes) + fmt chunk + data chunk
+            
+            if len(wav_data) < 44:  # Minimum WAV file size
+                _LOGGER.warning("WAV file too small, treating as raw PCM")
+                return wav_data
+            
+            # Find the data chunk
+            data_offset = 12  # Skip RIFF header
+            
+            while data_offset < len(wav_data) - 8:
+                chunk_id = wav_data[data_offset:data_offset + 4]
+                chunk_size = int.from_bytes(wav_data[data_offset + 4:data_offset + 8], 'little')
+                
+                if chunk_id == b'data':
+                    # Found data chunk, extract PCM data
+                    pcm_start = data_offset + 8
+                    pcm_end = pcm_start + chunk_size
+                    pcm_data = wav_data[pcm_start:pcm_end]
+                    _LOGGER.debug(f"Extracted {len(pcm_data)} bytes of PCM data from WAV")
+                    return pcm_data
+                
+                # Move to next chunk
+                data_offset += 8 + chunk_size
+                if chunk_size % 2:  # Align to even byte boundary
+                    data_offset += 1
+            
+            _LOGGER.warning("No data chunk found in WAV file, treating as raw PCM")
+            return wav_data
+            
+        except Exception as e:
+            _LOGGER.warning(f"Error parsing WAV file: {e}, treating as raw PCM")
+            return wav_data
 
     async def test_connection(self) -> bool:
         """Test the connection to Gemini API."""
