@@ -149,6 +149,10 @@ async def async_setup_services(hass: HomeAssistant) -> bool:
                 entries = hass.config_entries.async_entries(DOMAIN)
                 if not entries:
                     _LOGGER.error("No Voice Assistant Gemini integration configured")
+                    hass.bus.async_fire(EVENT_STT_RESULT, {
+                        "session_id": call.data.get("session_id", "unknown"),
+                        "error": "No Voice Assistant Gemini integration configured",
+                    })
                     return
                 
                 entry = entries[0]  # Use first entry
@@ -169,6 +173,10 @@ async def async_setup_services(hass: HomeAssistant) -> bool:
                     audio_bytes = base64.b64decode(audio_data)
                 else:
                     _LOGGER.error("No audio source or data provided")
+                    hass.bus.async_fire(EVENT_STT_RESULT, {
+                        "session_id": session_id,
+                        "error": "No audio source or data provided",
+                    })
                     return
                 
                 # Initialize STT client
@@ -203,6 +211,7 @@ async def async_setup_services(hass: HomeAssistant) -> bool:
                 entries = hass.config_entries.async_entries(DOMAIN)
                 if not entries:
                     _LOGGER.error("No Voice Assistant Gemini integration configured")
+                    call.async_set_result({"error": "No Voice Assistant Gemini integration configured"})
                     return
                 
                 entry = entries[0]  # Use first entry
@@ -255,6 +264,7 @@ async def async_setup_services(hass: HomeAssistant) -> bool:
                 entries = hass.config_entries.async_entries(DOMAIN)
                 if not entries:
                     _LOGGER.error("No Voice Assistant Gemini integration configured")
+                    call.async_set_result({"error": "No Voice Assistant Gemini integration configured"})
                     return
                 
                 entry = entries[0]  # Use first entry
@@ -299,6 +309,7 @@ async def async_setup_services(hass: HomeAssistant) -> bool:
                 
                 if not text:
                     _LOGGER.error("No text input provided for conversation")
+                    call.async_set_result({"error": "No text input provided for conversation"})
                     return
                 
                 # Initialize Gemini agent
@@ -381,12 +392,30 @@ async def async_setup_services(hass: HomeAssistant) -> bool:
                     entries = hass.config_entries.async_entries(DOMAIN)
                     if not entries:
                         _LOGGER.error("No Voice Assistant Gemini integration configured")
+                        hass.bus.async_fire(
+                            "voice_assistant_gemini_voice_preview",
+                            {
+                                "voice": voice,
+                                "text": text,
+                                "error": "No Voice Assistant Gemini integration configured",
+                                "success": False,
+                            }
+                        )
                         return
                     
                     entry = entries[0]
                     api_key = entry.data.get("gemini_api_key")
                     if not api_key:
                         _LOGGER.error("No API key available for voice preview")
+                        hass.bus.async_fire(
+                            "voice_assistant_gemini_voice_preview",
+                            {
+                                "voice": voice,
+                                "text": text,
+                                "error": "No API key available for voice preview",
+                                "success": False,
+                            }
+                        )
                         return
                 
                 # Create Gemini client and generate preview
@@ -482,6 +511,17 @@ async def async_setup_services(hass: HomeAssistant) -> bool:
                 entries = hass.config_entries.async_entries(DOMAIN)
                 if not entries:
                     _LOGGER.error("No Voice Assistant Gemini integration configured")
+                    hass.bus.async_fire(
+                        "voice_assistant_gemini_stt_result",
+                        {
+                            "audio_file": call.data.get("audio_file", "unknown"),
+                            "language": call.data.get("language", "en-US"),
+                            "transcript": "",
+                            "confidence": 0.0,
+                            "success": False,
+                            "error": "No Voice Assistant Gemini integration configured",
+                        }
+                    )
                     return
                 
                 entry = entries[0]
@@ -515,6 +555,7 @@ async def async_setup_services(hass: HomeAssistant) -> bool:
                 entries = hass.config_entries.async_entries(DOMAIN)
                 if not entries:
                     _LOGGER.error("No Voice Assistant Gemini integration configured")
+                    call.async_set_result({"error": "No Voice Assistant Gemini integration configured"})
                     return
                 
                 entry = entries[0]
