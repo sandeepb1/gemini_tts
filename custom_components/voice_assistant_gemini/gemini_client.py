@@ -182,28 +182,29 @@ class GeminiClient:
     
     async def conversation(self, messages: List[Dict[str, str]], system_prompt: str = None) -> str:
         """Have a conversation using Gemini API."""
-        # Build conversation contents
+        # Build conversation contents with proper Gemini API format
         contents = []
         
-        # Add system prompt if provided
-        if system_prompt:
-            contents.append({
-                "parts": [{"text": f"System: {system_prompt}"}]
-            })
-        
-        # Add conversation messages
+        # Add conversation messages with correct role mapping
         for message in messages:
             role = message.get("role", "user")
             content = message.get("content", "")
             
+            # Map Home Assistant roles to Gemini API roles
             if role == "user":
                 contents.append({
-                    "parts": [{"text": f"User: {content}"}]
+                    "role": "user",
+                    "parts": [{"text": content}]
                 })
             elif role == "assistant":
+                # Gemini API uses "model" instead of "assistant"
                 contents.append({
-                    "parts": [{"text": f"Assistant: {content}"}]
+                    "role": "model", 
+                    "parts": [{"text": content}]
                 })
+            elif role == "system":
+                # System messages should be handled via systemInstruction parameter
+                continue
         
         payload = {
             "contents": contents,
@@ -212,6 +213,12 @@ class GeminiClient:
                 "maxOutputTokens": 1500
             }
         }
+        
+        # Add system instruction if provided
+        if system_prompt:
+            payload["systemInstruction"] = {
+                "parts": [{"text": system_prompt}]
+            }
         
         endpoint = f"models/{GEMINI_MODELS['conversation']}:generateContent"
         
