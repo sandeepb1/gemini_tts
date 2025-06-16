@@ -346,7 +346,12 @@ class TTSClient:
         if self._client is None:
             try:
                 from google.cloud import texttospeech
-                self._client = texttospeech.TextToSpeechClient()
+                
+                # Initialize client in executor to avoid blocking
+                def _create_client():
+                    return texttospeech.TextToSpeechClient()
+                
+                self._client = await self.hass.async_add_executor_job(_create_client)
             except ImportError as err:
                 _LOGGER.error("Google Cloud TTS library not installed: %s", err)
                 raise RuntimeError("Google Cloud TTS library not available") from err

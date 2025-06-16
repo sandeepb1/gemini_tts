@@ -93,7 +93,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     
     # Test Gemini API key using direct HTTP request
     try:
-        import aiohttp
         import json
         
         # Test the API key with a simple request
@@ -101,56 +100,61 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         payload = {
             "contents": [{
                 "parts": [{"text": "Hello"}]
-            }]
+            }],
+            "generationConfig": {
+                "maxOutputTokens": 10
+            }
         }
         
         session = async_get_clientsession(hass)
-        async with session.post(url, json=payload) as response:
-            if response.status == 401:
+        
+        # Set a timeout for the validation request
+        timeout = 10  # 10 seconds timeout
+        
+        async with session.post(
+            url, 
+            json=payload,
+            timeout=timeout,
+            headers={"Content-Type": "application/json"}
+        ) as response:
+            if response.status == 400:
+                # Check if it's an API key issue
+                error_text = await response.text()
+                if "API_KEY_INVALID" in error_text or "invalid" in error_text.lower():
+                    raise InvalidAuth("Invalid Gemini API key")
+                else:
+                    _LOGGER.warning(f"Gemini API validation warning: {error_text}")
+                    # Continue anyway - might be a temporary issue
+            elif response.status == 401 or response.status == 403:
                 raise InvalidAuth("Invalid Gemini API key")
             elif response.status != 200:
                 error_text = await response.text()
-                _LOGGER.error(f"Gemini API error {response.status}: {error_text}")
-                raise CannotConnect(f"API request failed: {response.status}")
-            
-            # Check if we got a valid response
-            result = await response.json()
-            if "candidates" not in result:
-                raise CannotConnect("Invalid API response format")
+                _LOGGER.warning(f"Gemini API validation returned {response.status}: {error_text}")
+                # Don't fail the config for non-auth errors - might be temporary
+            else:
+                # Check if we got a valid response
+                try:
+                    result = await response.json()
+                    if "candidates" not in result and "error" in result:
+                        error_info = result.get("error", {})
+                        if error_info.get("code") in [401, 403]:
+                            raise InvalidAuth("Invalid Gemini API key")
+                        else:
+                            _LOGGER.warning(f"Gemini API validation warning: {error_info}")
+                except json.JSONDecodeError:
+                    _LOGGER.warning("Could not parse Gemini API response during validation")
         
-    except aiohttp.ClientError as err:
-        _LOGGER.error("HTTP client error during validation: %s", err)
-        raise CannotConnect from err
-    except json.JSONDecodeError as err:
-        _LOGGER.error("JSON decode error during validation: %s", err)
-        raise CannotConnect from err
+    except InvalidAuth:
+        # Re-raise auth errors
+        raise
     except Exception as err:
-        _LOGGER.error("Error validating Gemini API key: %s", err)
-        raise CannotConnect from err
+        _LOGGER.warning("Could not validate Gemini API key during config: %s", err)
+        # Don't fail the config for network/temporary issues
+        # The API key will be validated when actually used
 
-    # Test STT API key if provided
-    stt_api_key = data.get(CONF_STT_API_KEY) or data[CONF_GEMINI_API_KEY]
-    if data.get(CONF_STT_PROVIDER) == "google_cloud":
-        try:
-            from google.cloud import speech
-            client = speech.SpeechClient()
-            # Simple validation - list recognition config
-            client.list_phrase_sets(parent="projects/test/locations/global")
-        except Exception as err:
-            _LOGGER.warning("STT API key validation failed: %s", err)
-
-    # Test TTS API key if provided
-    tts_api_key = data.get(CONF_TTS_API_KEY) or data[CONF_GEMINI_API_KEY]
-    if data.get(CONF_TTS_PROVIDER) == "google_cloud":
-        try:
-            from google.cloud import texttospeech
-            client = texttospeech.TextToSpeechClient()
-            # Simple validation - list voices
-            voices = client.list_voices()
-            if not voices.voices:
-                raise InvalidAuth("Invalid TTS API key")
-        except Exception as err:
-            _LOGGER.warning("TTS API key validation failed: %s", err)
+    # Skip STT/TTS validation during config flow to avoid blocking calls
+    # These will be validated when the integration is actually used
+    _LOGGER.info("Skipping STT/TTS validation during config flow - will validate on first use")
 
     return {"title": "Voice Assistant Gemini"}
 

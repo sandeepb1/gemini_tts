@@ -45,8 +45,11 @@ class STTClient:
             try:
                 from google.cloud import speech
                 
-                # Initialize client with credentials
-                self._client = speech.SpeechClient()
+                # Initialize client with credentials in executor to avoid blocking
+                def _create_client():
+                    return speech.SpeechClient()
+                
+                self._client = await self.hass.async_add_executor_job(_create_client)
             except ImportError as err:
                 _LOGGER.error("Google Cloud Speech library not installed: %s", err)
                 raise RuntimeError("Google Cloud Speech library not available") from err
