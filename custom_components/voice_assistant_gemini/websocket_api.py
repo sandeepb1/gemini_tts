@@ -62,6 +62,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> bool:
         websocket_api.async_register_command(hass, ws_clear_session)
         websocket_api.async_register_command(hass, ws_get_session_stats)
         websocket_api.async_register_command(hass, ws_preview_voice)
+        websocket_api.async_register_command(hass, ws_synthesize_streaming)
         
         _LOGGER.info("Voice Assistant Gemini WebSocket API registered")
     
@@ -597,4 +598,121 @@ async def ws_preview_voice(
     
     except Exception as err:
         _LOGGER.error("WebSocket preview_voice error: %s", err)
-        connection.send_error(msg["id"], "preview_voice_failed", str(err)) 
+        connection.send_error(msg["id"], "preview_voice_failed", str(err))
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "voice_assistant_gemini/synthesize_streaming",
+    vol.Required("text"): cv.string,
+    vol.Optional("voice", default=""): cv.string,
+    vol.Optional("emotion", default=DEFAULT_EMOTION): cv.string,
+    vol.Optional("tone_style", default=DEFAULT_TONE_STYLE): cv.string,
+    vol.Optional("speaking_rate", default=DEFAULT_SPEAKING_RATE): vol.All(
+        vol.Coerce(float), vol.Range(min=0.25, max=4.0)
+    ),
+    vol.Optional("pitch", default=DEFAULT_PITCH): vol.All(
+        vol.Coerce(float), vol.Range(min=-20.0, max=20.0)
+    ),
+    vol.Optional("volume_gain_db", default=DEFAULT_VOLUME_GAIN_DB): vol.All(
+        vol.Coerce(float), vol.Range(min=-96.0, max=16.0)
+    ),
+    vol.Optional("language", default=DEFAULT_LANGUAGE): cv.string,
+    vol.Optional("provider", default=DEFAULT_TTS_PROVIDER): cv.string,
+})
+@websocket_api.async_response
+async def ws_synthesize_streaming(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Synthesize text to speech with streaming support."""
+    try:
+        # Get configuration
+        entries = hass.config_entries.async_entries(DOMAIN)
+        if not entries:
+            connection.send_error(msg["id"], "no_config", "No integration configured")
+            return
+        
+        entry = entries[0]
+        config = entry.data
+        
+        # Get parameters
+        text = msg["text"]
+        voice = msg.get("voice", "")
+        emotion = msg.get("emotion", DEFAULT_EMOTION)
+        tone_style = msg.get("tone_style", DEFAULT_TONE_STYLE)
+        speaking_rate = msg.get("speaking_rate", DEFAULT_SPEAKING_RATE)
+        pitch = msg.get("pitch", DEFAULT_PITCH)
+        volume_gain_db = msg.get("volume_gain_db", DEFAULT_VOLUME_GAIN_DB)
+        language = msg.get("language", config.get(CONF_DEFAULT_LANGUAGE, DEFAULT_LANGUAGE))
+        provider = msg.get("provider", config.get(CONF_TTS_PROVIDER, DEFAULT_TTS_PROVIDER))
+        
+        # Use default voice from config if no voice specified
+        if not voice:
+            voice = config.get(CONF_DEFAULT_VOICE, "Kore")
+        
+        # Initialize TTS client
+        api_key = config.get(CONF_TTS_API_KEY) or config.get(CONF_GEMINI_API_KEY)
+        tts_client = TTSClient(hass, api_key, language, provider)
+        
+        _LOGGER.debug("Starting streaming TTS synthesis for text length: %d", len(text))
+        
+        # Track streaming progress
+        chunk_count = 0
+        
+        async def chunk_callback(chunk_data):
+            nonlocal chunk_count
+            chunk_count += 1
+            
+            # Send chunk to client
+            chunk_message = {
+                "type": "streaming_chunk",
+                "chunk_index": chunk_data["chunk_index"],
+                "total_chunks": chunk_data["total_chunks"],
+                "audio_data": base64.b64encode(chunk_data["chunk"]).decode(),
+                "text": chunk_data["text"],
+                "is_final": chunk_data["is_final"],
+                "progress": (chunk_data["chunk_index"] + 1) / chunk_data["total_chunks"]
+            }
+            
+            # Send the chunk immediately
+            connection.send_message({
+                "id": msg["id"],
+                "type": "result",
+                "success": True,
+                "result": chunk_message
+            })
+            
+            _LOGGER.debug("Sent streaming chunk %d/%d", 
+                         chunk_data["chunk_index"] + 1, chunk_data["total_chunks"])
+        
+        # Perform streaming synthesis
+        full_audio = await tts_client.synthesize_streaming(
+            text=text,
+            voice=voice,
+            speaking_rate=speaking_rate,
+            pitch=pitch,
+            volume_gain_db=volume_gain_db,
+            ssml=False,
+            emotion=emotion,
+            tone_style=tone_style,
+            chunk_callback=chunk_callback
+        )
+        
+        # Send final completion message
+        final_result = {
+            "type": "streaming_complete",
+            "total_chunks": chunk_count,
+            "full_audio_data": base64.b64encode(full_audio).decode(),
+            "text": text,
+            "voice": voice,
+            "emotion": emotion,
+            "tone_style": tone_style
+        }
+        
+        connection.send_result(msg["id"], final_result)
+        _LOGGER.debug("Completed streaming TTS synthesis with %d chunks", chunk_count)
+        
+    except Exception as err:
+        _LOGGER.error("WebSocket streaming synthesize error: %s", err)
+        connection.send_error(msg["id"], "streaming_synthesize_failed", str(err)) 

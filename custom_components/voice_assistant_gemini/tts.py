@@ -99,6 +99,32 @@ class TTSClient:
             _LOGGER.error("TTS synthesis failed after %d attempts: %s", RETRY_ATTEMPTS, err)
             raise RuntimeError(f"Speech synthesis failed: {err}") from err
 
+    async def synthesize_streaming(
+        self,
+        text: str,
+        voice: str = "",
+        speaking_rate: float = 1.0,
+        pitch: float = 0.0,
+        volume_gain_db: float = 0.0,
+        ssml: bool = False,
+        emotion: str = "neutral",
+        tone_style: str = "normal",
+        chunk_callback=None,
+    ) -> bytes:
+        """Synthesize text to speech with streaming support for long texts."""
+        try:
+            if self.provider == "gemini_tts":
+                return await self._synthesize_gemini_tts_streaming(
+                    text, voice, speaking_rate, pitch, volume_gain_db, ssml, emotion, tone_style, chunk_callback
+                )
+            else:
+                # For non-Gemini providers, fall back to regular synthesis
+                return await self.synthesize(text, voice, speaking_rate, pitch, volume_gain_db, ssml, emotion, tone_style)
+        
+        except Exception as err:
+            _LOGGER.error("TTS streaming synthesis failed: %s", err)
+            raise RuntimeError(f"Speech synthesis failed: {err}") from err
+
     async def _get_gemini_client(self):
         """Get Gemini client."""
         if self._gemini_client is None:
@@ -183,6 +209,91 @@ class TTSClient:
             raise RuntimeError(f"Gemini TTS synthesis failed: {err}") from err
         except Exception as err:
             _LOGGER.error("Unexpected error in Gemini TTS synthesis: %s", err)
+            raise
+
+    async def _synthesize_gemini_tts_streaming(
+        self,
+        text: str,
+        voice: str,
+        speaking_rate: float,
+        pitch: float,
+        volume_gain_db: float,
+        ssml: bool,
+        emotion: str = "neutral",
+        tone_style: str = "normal",
+        chunk_callback=None,
+    ) -> bytes:
+        """Synthesize using Gemini TTS API with streaming support."""
+        try:
+            client = await self._get_gemini_client()
+            
+            # Use default voice if none specified
+            if not voice or voice not in GEMINI_VOICES:
+                voice = "Kore"  # Default voice
+            
+            # Prepare text with style instructions if needed
+            synthesis_text = text
+            style_instructions = []
+            
+            # Add emotion instructions
+            if emotion != "neutral":
+                emotion_map = {
+                    "happy": "in a happy and cheerful manner",
+                    "sad": "in a somber and melancholic tone",
+                    "excited": "with energy and enthusiasm",
+                    "calm": "in a relaxed and peaceful way",
+                    "confident": "with confidence and strength",
+                    "friendly": "in a warm and approachable manner",
+                    "professional": "in a business-like and formal tone"
+                }
+                if emotion in emotion_map:
+                    style_instructions.append(emotion_map[emotion])
+            
+            # Add tone style instructions  
+            if tone_style != "normal":
+                tone_map = {
+                    "casual": "in a casual and relaxed conversational style",
+                    "formal": "in a professional and structured manner",
+                    "storytelling": "in an engaging narrative style",
+                    "informative": "in a clear and educational way",
+                    "conversational": "as if having a natural conversation",
+                    "announcement": "as a clear and important announcement",
+                    "customer_service": "in a helpful and polite customer service manner"
+                }
+                if tone_style in tone_map:
+                    style_instructions.append(tone_map[tone_style])
+            
+            # Add speaking rate and pitch instructions
+            if speaking_rate < 0.8:
+                style_instructions.append("speak slowly")
+            elif speaking_rate > 1.2:
+                style_instructions.append("speak quickly")
+            
+            if pitch < -0.2:
+                style_instructions.append("with a lower tone")
+            elif pitch > 0.2:
+                style_instructions.append("with a higher tone")
+            
+            # Apply styling if instructions exist
+            if style_instructions:
+                synthesis_text = f"Please {', '.join(style_instructions)}: {text}"
+            
+            # Generate speech using streaming approach
+            audio_content = await client.generate_speech_streaming(
+                synthesis_text, 
+                voice, 
+                chunk_callback=chunk_callback
+            )
+            
+            _LOGGER.debug("Synthesized %d bytes of streaming audio with Gemini TTS", len(audio_content))
+            self._retry_count = 0  # Reset retry count on success
+            return audio_content
+        
+        except GeminiAPIError as err:
+            _LOGGER.error("Gemini TTS streaming synthesis error: %s", err)
+            raise RuntimeError(f"Gemini TTS streaming synthesis failed: {err}") from err
+        except Exception as err:
+            _LOGGER.error("Unexpected error in Gemini TTS streaming synthesis: %s", err)
             raise
 
     async def _synthesize_google_cloud(
@@ -721,10 +832,19 @@ class GeminiTTSProvider(TextToSpeechEntity):
             emotion = options.get("emotion") or config_options.get("emotion") or config_data.get("emotion", "neutral")
             tone_style = options.get("tone_style") or config_options.get("tone_style") or config_data.get("tone_style", "normal")
             
+            # Check if streaming should be used (for longer texts or explicit request)
+            use_streaming = options.get("streaming", len(message) > 200)
+            
             # Synthesize speech
-            audio_data = await self._client.synthesize(
-                message, voice, speaking_rate, pitch, volume_gain_db, ssml, emotion, tone_style
-            )
+            if use_streaming and self.provider == "gemini_tts":
+                _LOGGER.debug("Using streaming synthesis for %d character message", len(message))
+                audio_data = await self._client.synthesize_streaming(
+                    message, voice, speaking_rate, pitch, volume_gain_db, ssml, emotion, tone_style
+                )
+            else:
+                audio_data = await self._client.synthesize(
+                    message, voice, speaking_rate, pitch, volume_gain_db, ssml, emotion, tone_style
+                )
             
             # Ensure we return proper audio format
             if not audio_data:

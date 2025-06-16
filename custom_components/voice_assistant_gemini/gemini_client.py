@@ -179,6 +179,70 @@ class GeminiClient:
         except Exception as e:
             _LOGGER.error(f"Error generating speech: {e}")
             raise GeminiAPIError(f"Speech generation failed: {e}")
+
+    async def generate_speech_streaming(self, text: str, voice: str = "Kore", chunk_callback=None):
+        """Generate speech using streaming approach for longer texts."""
+        if voice not in GEMINI_VOICES:
+            _LOGGER.warning(f"Unknown voice {voice}, using default 'Kore'")
+            voice = "Kore"
+        
+        # For very long texts, split into sentences and stream each chunk
+        sentences = self._split_into_sentences(text)
+        audio_chunks = []
+        
+        for i, sentence in enumerate(sentences):
+            if not sentence.strip():
+                continue
+                
+            _LOGGER.debug(f"Generating audio chunk {i+1}/{len(sentences)}: {sentence[:50]}...")
+            
+            chunk_audio = await self.generate_speech(sentence, voice)
+            audio_chunks.append(chunk_audio)
+            
+            if chunk_callback:
+                # Call the callback with the chunk and progress info
+                await chunk_callback({
+                    'chunk': chunk_audio,
+                    'chunk_index': i,
+                    'total_chunks': len(sentences),
+                    'text': sentence,
+                    'is_final': i == len(sentences) - 1
+                })
+        
+        # Return concatenated audio for backward compatibility
+        return b''.join(audio_chunks)
+    
+    def _split_into_sentences(self, text: str) -> list[str]:
+        """Split text into sentences for streaming."""
+        import re
+        
+        # Split on sentence boundaries while preserving some context
+        # This regex looks for sentence endings followed by whitespace and capital letters
+        sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
+        
+        # If no clear sentence boundaries found, split by length
+        if len(sentences) == 1 and len(text) > 200:
+            # Split long text into ~150 character chunks at word boundaries
+            words = text.split()
+            chunks = []
+            current_chunk = []
+            current_length = 0
+            
+            for word in words:
+                if current_length + len(word) + 1 > 150 and current_chunk:
+                    chunks.append(' '.join(current_chunk))
+                    current_chunk = [word]
+                    current_length = len(word)
+                else:
+                    current_chunk.append(word)
+                    current_length += len(word) + 1
+            
+            if current_chunk:
+                chunks.append(' '.join(current_chunk))
+            
+            return chunks
+        
+        return [s.strip() for s in sentences if s.strip()]
     
     async def conversation(self, messages: List[Dict[str, str]], system_prompt: str = None) -> str:
         """Have a conversation using Gemini API."""

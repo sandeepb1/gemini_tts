@@ -1,0 +1,18 @@
+# Gemini TTS Streaming Examples
+# 
+# The Gemini TTS integration now supports streaming for faster audio playback
+# with longer texts. Audio starts playing as soon as the first chunk is ready.
+
+# Example 1: Basic streaming TTS service call
+service: tts.speak
+data:
+  entity_id: tts.gemini_tts_gemini_tts  # Replace with your actual entity ID
+  message: >
+    This is a long message that will benefit from streaming. The audio will 
+    start playing immediately as chunks are generated, providing a much faster 
+    experience compared to waiting for the entire audio to be generated first.
+  options:
+    voice: Kore
+    emotion: friendly
+    tone_style: conversational
+    streaming: true  # Explicitly enable streaming 
