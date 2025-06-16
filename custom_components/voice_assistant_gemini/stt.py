@@ -8,6 +8,9 @@ import wave
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.stt import SpeechToTextEntity, SpeechMetadata, SpeechResult, SpeechResultState
+from homeassistant.helpers.entity import EntityCategory
 
 from .const import (
     AUDIO_CHANNELS,
@@ -16,6 +19,7 @@ from .const import (
     API_TIMEOUT,
     RETRY_ATTEMPTS,
     RETRY_BACKOFF_FACTOR,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -262,3 +266,98 @@ class STTClient:
         except Exception as err:
             _LOGGER.error("STT connection test failed: %s", err)
             return False 
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities,
+) -> None:
+    """Set up STT provider."""
+    # Create STT provider
+    api_key = config_entry.data.get("stt_api_key") or config_entry.data.get("gemini_api_key")
+    language = config_entry.data.get("default_language", "en-US")
+    provider = config_entry.data.get("stt_provider", "google_cloud")
+    
+    stt_provider = GeminiSTTProvider(hass, config_entry, api_key, language, provider)
+    
+    async_add_entities([stt_provider])
+
+
+class GeminiSTTProvider(SpeechToTextEntity):
+    """Gemini STT provider for Home Assistant."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        api_key: str,
+        language: str,
+        provider: str,
+    ) -> None:
+        """Initialize the STT provider."""
+        self.hass = hass
+        self.config_entry = config_entry
+        self._client = STTClient(hass, api_key, language, provider)
+        self._attr_name = f"Gemini STT ({provider})"
+        self._attr_unique_id = f"{config_entry.entry_id}_stt"
+        self._attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def name(self) -> str:
+        """Return the name of the STT provider."""
+        return self._attr_name
+
+    @property
+    def unique_id(self) -> str:
+        """Return the unique ID of the STT provider."""
+        return self._attr_unique_id
+
+    @property
+    def supported_languages(self) -> list[str]:
+        """Return list of supported languages."""
+        return [
+            "en-US", "en-GB", "es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR",
+            "ru-RU", "ja-JP", "ko-KR", "zh-CN", "zh-TW", "ar-SA", "hi-IN"
+        ]
+
+    @property
+    def supported_formats(self) -> list[str]:
+        """Return list of supported formats."""
+        return ["wav", "mp3", "flac", "ogg"]
+
+    @property
+    def supported_codecs(self) -> list[str]:
+        """Return list of supported codecs."""
+        return ["pcm", "mp3", "flac", "opus"]
+
+    async def async_process_audio_stream(
+        self, metadata: SpeechMetadata, stream
+    ) -> SpeechResult:
+        """Process audio stream to text."""
+        try:
+            # Read audio data from stream
+            audio_data = b""
+            async for chunk in stream:
+                audio_data += chunk
+            
+            if not audio_data:
+                return SpeechResult(
+                    text="",
+                    result=SpeechResultState.ERROR,
+                )
+            
+            # Transcribe audio
+            transcript = await self._client.transcribe(audio_data)
+            
+            return SpeechResult(
+                text=transcript,
+                result=SpeechResultState.SUCCESS,
+            )
+        
+        except Exception as err:
+            _LOGGER.error("STT processing error: %s", err)
+            return SpeechResult(
+                text="",
+                result=SpeechResultState.ERROR,
+            ) 

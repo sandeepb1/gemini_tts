@@ -9,11 +9,15 @@ from typing import Any, NamedTuple
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.tts import TextToSpeechEntity, TtsAudioType, Voice as TTSVoice
+from homeassistant.helpers.entity import EntityCategory
 
 from .const import (
     API_TIMEOUT,
     RETRY_ATTEMPTS,
     RETRY_BACKOFF_FACTOR,
+    DOMAIN,
 )
 try:
     from .gemini_client import GeminiClient, GeminiAPIError, GEMINI_VOICES
@@ -526,4 +530,117 @@ class TTSClient:
             return False
         except Exception as err:
             _LOGGER.error("TTS connection test failed: %s", err)
-            return False 
+            return False
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities,
+) -> None:
+    """Set up TTS provider."""
+    # Create TTS provider
+    api_key = config_entry.data.get("tts_api_key") or config_entry.data.get("gemini_api_key")
+    language = config_entry.data.get("default_language", "en-US")
+    provider = config_entry.data.get("tts_provider", "gemini_tts")
+    
+    tts_provider = GeminiTTSProvider(hass, config_entry, api_key, language, provider)
+    
+    async_add_entities([tts_provider])
+
+
+class GeminiTTSProvider(TextToSpeechEntity):
+    """Gemini TTS provider for Home Assistant."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        api_key: str,
+        language: str,
+        provider: str,
+    ) -> None:
+        """Initialize the TTS provider."""
+        self.hass = hass
+        self.config_entry = config_entry
+        self._client = TTSClient(hass, api_key, language, provider)
+        self._attr_name = f"Gemini TTS ({provider})"
+        self._attr_unique_id = f"{config_entry.entry_id}_tts"
+        self._attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def name(self) -> str:
+        """Return the name of the TTS provider."""
+        return self._attr_name
+
+    @property
+    def unique_id(self) -> str:
+        """Return the unique ID of the TTS provider."""
+        return self._attr_unique_id
+
+    @property
+    def supported_languages(self) -> list[str]:
+        """Return list of supported languages."""
+        return [
+            "en-US", "en-GB", "es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR",
+            "ru-RU", "ja-JP", "ko-KR", "zh-CN", "zh-TW", "ar-SA", "hi-IN"
+        ]
+
+    @property
+    def default_language(self) -> str:
+        """Return the default language."""
+        return self.config_entry.data.get("default_language", "en-US")
+
+    @property
+    def supported_options(self) -> list[str]:
+        """Return list of supported options."""
+        return ["voice", "speed", "pitch"]
+
+    async def async_get_supported_voices(self, language: str) -> list[TTSVoice]:
+        """Return list of supported voices for language."""
+        try:
+            voices = await self._client.list_voices()
+            
+            # Filter voices by language if specified
+            if language:
+                lang_prefix = language.split("-")[0]  # e.g., "en" from "en-US"
+                voices = [v for v in voices if v.language.startswith(lang_prefix)]
+            
+            # Convert to Home Assistant Voice format
+            return [
+                TTSVoice(
+                    voice_id=voice.name,
+                    name=voice.name,
+                )
+                for voice in voices
+            ]
+        
+        except Exception as err:
+            _LOGGER.error("Error getting supported voices: %s", err)
+            return []
+
+    async def async_get_tts_audio(
+        self, message: str, language: str, options: dict[str, Any] | None = None
+    ) -> TtsAudioType:
+        """Return TTS audio."""
+        try:
+            if options is None:
+                options = {}
+            
+            # Extract options
+            voice = options.get("voice", "")
+            speaking_rate = float(options.get("speed", 1.0))
+            pitch = float(options.get("pitch", 0.0))
+            volume_gain_db = 0.0
+            ssml = False
+            
+            # Synthesize speech
+            audio_data = await self._client.synthesize(
+                message, voice, speaking_rate, pitch, volume_gain_db, ssml
+            )
+            
+            return ("mp3", audio_data)
+        
+        except Exception as err:
+            _LOGGER.error("TTS synthesis error: %s", err)
+            raise 

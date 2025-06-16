@@ -8,8 +8,12 @@ from datetime import datetime
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.conversation import ConversationEntity, ConversationInput, ConversationResult
+from homeassistant.helpers import intent
 
 from .const import (
+    DOMAIN,
     API_TIMEOUT,
     RETRY_ATTEMPTS,
     RETRY_BACKOFF_FACTOR,
@@ -315,4 +319,94 @@ Summary:"""
         
         except Exception as err:
             _LOGGER.error("Error generating summary: %s", err)
-            return f"Error generating summary: {err}" 
+            return f"Error generating summary: {err}"
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities,
+) -> None:
+    """Set up conversation provider."""
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
+    
+    # Create conversation agent
+    api_key = config_entry.data.get("gemini_api_key")
+    model = config_entry.data.get("gemini_model", "gemini-2.0-flash")
+    temperature = config_entry.data.get("temperature", 0.7)
+    max_tokens = config_entry.data.get("max_tokens", 2048)
+    
+    agent = GeminiConversationProvider(
+        hass, config_entry, api_key, model, temperature, max_tokens, coordinator
+    )
+    
+    async_add_entities([agent])
+
+
+class GeminiConversationProvider(ConversationEntity):
+    """Gemini conversation provider for Home Assistant."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        api_key: str,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        coordinator,
+    ) -> None:
+        """Initialize the conversation provider."""
+        super().__init__()
+        self.hass = hass
+        self.config_entry = config_entry
+        self._agent = GeminiAgent(hass, api_key, model, temperature, max_tokens, coordinator)
+        self._attr_name = "Gemini"
+        self._attr_unique_id = f"{config_entry.entry_id}_conversation"
+
+    @property
+    def name(self) -> str:
+        """Return the name of the conversation provider."""
+        return self._attr_name
+
+    @property
+    def unique_id(self) -> str:
+        """Return the unique ID of the conversation provider."""
+        return self._attr_unique_id
+
+    @property
+    def supported_languages(self) -> list[str]:
+        """Return list of supported languages."""
+        return [
+            "en", "es", "fr", "de", "it", "pt", "ru", "ja", "ko", "zh", "ar", "hi"
+        ]
+
+    async def async_process(
+        self, user_input: ConversationInput
+    ) -> ConversationResult:
+        """Process a conversation turn."""
+        try:
+            response_text, metadata = await self._agent.generate(
+                user_input.text, user_input.conversation_id
+            )
+            
+            # Create intent response
+            response = intent.IntentResponse(language=user_input.language)
+            response.async_set_speech(response_text)
+            
+            return ConversationResult(
+                conversation_id=metadata.get("session_id", user_input.conversation_id),
+                response=response,
+            )
+        
+        except Exception as err:
+            _LOGGER.error("Error processing conversation: %s", err)
+            
+            # Create error response
+            response = intent.IntentResponse(language=user_input.language)
+            response.async_set_speech(f"Sorry, I encountered an error: {err}")
+            
+            return ConversationResult(
+                conversation_id=user_input.conversation_id,
+                response=response,
+            ) 
