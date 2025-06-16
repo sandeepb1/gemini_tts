@@ -318,53 +318,73 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Create dynamic schema with model descriptions
         services_schema_dict = {}
         
-        # Language selection
-        services_schema_dict[vol.Optional(CONF_DEFAULT_LANGUAGE, default=DEFAULT_LANGUAGE)] = vol.In(SUPPORTED_LANGUAGES)
+        # Language selection with descriptions
+        language_options = {lang: f"{lang} - {self._get_language_description(lang)}" for lang in SUPPORTED_LANGUAGES}
+        services_schema_dict[vol.Optional(CONF_DEFAULT_LANGUAGE, default=DEFAULT_LANGUAGE)] = vol.In(language_options)
         
-        # Provider selections
-        services_schema_dict[vol.Optional(CONF_STT_PROVIDER, default=DEFAULT_STT_PROVIDER)] = vol.In(STT_PROVIDERS)
-        services_schema_dict[vol.Optional(CONF_TTS_PROVIDER, default=DEFAULT_TTS_PROVIDER)] = vol.In(TTS_PROVIDERS)
+        # Provider selections with descriptions
+        stt_provider_options = {
+            "google_cloud": "Google Cloud STT - High accuracy cloud-based recognition",
+            "vosk": "Vosk - Local offline speech recognition"
+        }
+        tts_provider_options = {
+            "gemini_tts": "Gemini TTS - Google's latest AI voices (Recommended)",
+            "google_cloud": "Google Cloud TTS - Traditional cloud voices",
+            "amazon_polly": "Amazon Polly - AWS neural voices",
+            "azure_tts": "Azure TTS - Microsoft cognitive services"
+        }
+        
+        services_schema_dict[vol.Optional(CONF_STT_PROVIDER, default=DEFAULT_STT_PROVIDER)] = vol.In(stt_provider_options)
+        services_schema_dict[vol.Optional(CONF_TTS_PROVIDER, default=DEFAULT_TTS_PROVIDER)] = vol.In(tts_provider_options)
         
         # Model selections with descriptions
-        services_schema_dict[vol.Optional(CONF_CONVERSATION_MODEL, default=DEFAULT_CONVERSATION_MODEL)] = vol.In(list(CONVERSATION_MODELS.keys()))
-        services_schema_dict[vol.Optional(CONF_TTS_MODEL, default=DEFAULT_TTS_MODEL)] = vol.In(list(TTS_MODELS.keys()))
-        services_schema_dict[vol.Optional(CONF_STT_MODEL, default=DEFAULT_STT_MODEL)] = vol.In(list(STT_MODELS.keys()))
+        services_schema_dict[vol.Optional(CONF_CONVERSATION_MODEL, default=DEFAULT_CONVERSATION_MODEL)] = vol.In(CONVERSATION_MODELS)
+        services_schema_dict[vol.Optional(CONF_TTS_MODEL, default=DEFAULT_TTS_MODEL)] = vol.In(TTS_MODELS)
+        services_schema_dict[vol.Optional(CONF_STT_MODEL, default=DEFAULT_STT_MODEL)] = vol.In(STT_MODELS)
 
         return self.async_show_form(
             step_id="services",
             data_schema=vol.Schema(services_schema_dict),
             description_placeholders={
-                "services_info": """Configure AI models and service providers:
+                "services_info": f"""Configure AI models and service providers:
 
 🌍 **Language & Regional Settings**
-• Default Language: Primary language for all services
-• Optimized for multilingual support
+• **Default Language**: Primary language for all AI services
+• **Supported Languages**: {', '.join(SUPPORTED_LANGUAGES)}
+• **Voice Compatibility**: All Gemini voices support multiple languages with accent adaptation
 
 🤖 **AI Model Selection**
 Choose the right models for optimal performance and quality:
 
-**Conversation AI:**
-• Gemini 2.0 Flash (Recommended) - Fast & Accurate responses
-• Gemini Pro - Balanced performance for most use cases  
-• Gemini Ultra - Highest quality, slower responses
+**Conversation AI Models:**
+{self._format_model_descriptions(CONVERSATION_MODELS)}
 
 **Text-to-Speech Models:**
-• Gemini 2.5 Flash TTS (Recommended) - Natural sounding voices
-• Gemini 2.0 Flash - Basic TTS functionality
+{self._format_model_descriptions(TTS_MODELS)}
 
 **Speech-to-Text Models:**
-• Gemini 2.0 Flash (Recommended) - Fast speech recognition
-• Gemini Pro - Higher accuracy for complex audio
+{self._format_model_descriptions(STT_MODELS)}
 
-🔧 **Service Providers**
+🔧 **Service Provider Options**
 Configure which services to use for different functions:
-• STT Provider: Speech recognition service
-• TTS Provider: Voice synthesis service
 
-💡 **Quick Setup Tips:**
-• Use recommended models for best results
-• All models support the same features
-• You can change these settings later in options"""
+**STT Providers:** {', '.join(STT_PROVIDERS)}
+• Speech recognition and transcription services
+
+**TTS Providers:** {', '.join(TTS_PROVIDERS)}
+• Voice synthesis and audio generation services
+
+💡 **Configuration Tips:**
+• **Recommended Setup**: Gemini 2.0 Flash (Conversation) + Gemini 2.5 Flash TTS (Voice) + Gemini 2.0 Flash (STT)
+• **Language Support**: All models work with your selected language
+• **Voice Quality**: TTS models determine available voice characteristics
+• **Provider Selection**: Choose based on your preferred service ecosystem
+
+**Language-Voice Pairing:**
+• **English (US/GB)**: Full voice range with all emotions and tones
+• **European Languages**: Optimized accent adaptation for natural speech
+• **Asian Languages**: Specialized pronunciation and tonal support
+• **Other Languages**: Automatic accent detection and adaptation"""
             }
         )
 
@@ -381,62 +401,82 @@ Configure which services to use for different functions:
         from homeassistant.components.http.static import StaticResource
         from homeassistant.const import CONF_FILENAME
         
-        # Register the enhanced voice selector script with Home Assistant
+        # Register the voice preview button script with Home Assistant
         www_path = os.path.join(os.path.dirname(__file__), "www")
-        voice_selector_path = os.path.join(www_path, "voice-config-enhanced.js")
+        voice_preview_path = os.path.join(www_path, "voice-preview-button.js")
         
         # Make sure the www directory is accessible
-        if self.hass.http and os.path.exists(voice_selector_path):
+        if self.hass.http and os.path.exists(voice_preview_path):
             static_path_config = StaticPathConfig(
-                f"/{DOMAIN}/voice-config-enhanced.js",
-                voice_selector_path,
+                f"/{DOMAIN}/voice-preview-button.js",
+                voice_preview_path,
                 True
             )
             await self.hass.http.async_register_static_paths([static_path_config])
 
+        # Create custom schema with voice dropdown and preview button
+        # Enhanced voice options with descriptions
+        voice_options = {voice: f"{voice} - {GEMINI_VOICE_DESCRIPTIONS.get(voice, 'Unique voice')}" 
+                        for voice in GEMINI_VOICES}
+        
+        voice_schema = vol.Schema({
+            vol.Optional(CONF_DEFAULT_VOICE, default="Kore"): vol.In(voice_options),
+            vol.Optional(CONF_EMOTION, default=DEFAULT_EMOTION): vol.In(EMOTION_OPTIONS),
+            vol.Optional(CONF_TONE_STYLE, default=DEFAULT_TONE_STYLE): vol.In(TONE_STYLE_OPTIONS),
+            vol.Optional(CONF_SPEAKING_RATE, default=DEFAULT_SPEAKING_RATE): vol.All(
+                vol.Coerce(float), vol.Range(min=0.25, max=4.0)
+            ),
+            vol.Optional(CONF_PITCH, default=DEFAULT_PITCH): vol.All(
+                vol.Coerce(float), vol.Range(min=-20.0, max=20.0)
+            ),
+            vol.Optional(CONF_VOLUME_GAIN_DB, default=DEFAULT_VOLUME_GAIN_DB): vol.All(
+                vol.Coerce(float), vol.Range(min=-96.0, max=16.0)
+            ),
+            vol.Optional(CONF_SSML, default=DEFAULT_SSML): bool,
+        })
+
         return self.async_show_form(
             step_id="voice",
-            data_schema=STEP_VOICE_DATA_SCHEMA,
+            data_schema=voice_schema,
             description_placeholders={
-                "voice_info": f"""Configure voice and audio settings with enhanced controls:
+                "voice_info": f"""Configure voice and audio settings:
 
-🎤 **Enhanced Voice Selection & Preview**
-Choose from 30 unique Gemini voices with live preview functionality.
-The enhanced selector provides:
+🎤 **Voice Selection & Preview**
+Choose from {len(GEMINI_VOICES)} unique Gemini voices with different characteristics:
 
-**🎭 Voice Features:**
-• Interactive voice preview with play buttons
-• Search and filter by voice characteristics
-• Emotion and tone style controls
-• Real-time voice sample generation
-• Category-based filtering (Professional, Friendly, Confident, etc.)
+**Available Voices:**
+{self._format_voice_descriptions_enhanced()}
 
-**🎨 Voice Styling:**
-• Emotion control (Neutral, Happy, Confident, Professional, etc.)
-• Tone style options (Normal, Casual, Formal, Storytelling, etc.)
-• Advanced audio parameters (Rate, Pitch, Volume)
-• SSML support for advanced formatting
+**🎨 Voice Styling Options:**
+• **Emotion**: Choose the emotional tone (Neutral, Happy, Confident, Professional, etc.)
+• **Tone Style**: Select speaking style (Normal, Casual, Formal, Storytelling, etc.)
 
-**📱 Responsive Design:**
-• Mobile-friendly interface
-• Keyboard navigation support
-• Accessible controls
-• Real-time updates
+**🔧 Audio Parameters:**
+• **Speaking Rate**: 0.25 (very slow) to 4.0 (very fast)
+• **Pitch**: -20.0 (lower) to 20.0 (higher)
+• **Volume Gain**: -96.0 (quieter) to 16.0 (louder)
+• **SSML Support**: Enable advanced formatting
 
-<script src="/{DOMAIN}/voice-config-enhanced.js"></script>
-<voice-config-enhanced></voice-config-enhanced>
+**🎵 Voice Preview:**
+• Interactive preview button will appear below
+• Test voices with your selected emotion and tone
+• Real-time audio generation from Gemini TTS API
 
-**Quick Setup Tips:**
-• Click any voice to select it
-• Use the play button (▶️) to preview voices
-• Filter by characteristics to find your perfect voice
-• Adjust emotion and tone for different use cases
+<script src="/{DOMAIN}/voice-preview-button.js"></script>
 
-**Popular Combinations:**
-• **Kore + Confident + Professional** - Great for commands and announcements
-• **Puck + Happy + Casual** - Perfect for friendly notifications
-• **Zephyr + Friendly + Conversational** - Excellent for interactive conversations
-• **Charon + Professional + Informative** - Ideal for news and weather updates"""
+**💡 Pro Tips:**
+• **Kore + Confident + Professional** - Great for commands
+• **Puck + Happy + Casual** - Perfect for notifications
+• **Zephyr + Friendly + Conversational** - Excellent for conversations
+• **Charon + Professional + Informative** - Ideal for news/weather
+
+**Emotion & Tone Combinations:**
+{self._format_emotion_tone_combinations()}
+
+**Testing After Setup:**
+• Use Developer Tools > Services > `voice_assistant_gemini.tts`
+• Try the Voice Assistant dashboard card
+• Test with different emotions and tones"""
             }
         )
 
@@ -511,6 +551,48 @@ The enhanced selector provides:
             formatted += f"\n• ... and {len(GEMINI_VOICE_DESCRIPTIONS) - 10} more voices available"
         return formatted
 
+    def _format_voice_descriptions_enhanced(self) -> str:
+        """Format enhanced voice descriptions with characteristics."""
+        # Group voices by characteristics
+        professional = ["Kore", "Charon", "Orus", "Autonoe", "Iapetus", "Algieba", "Rasalgethi", "Alnilam", "Schedar", "Gacrux"]
+        friendly = ["Puck", "Zephyr", "Leda", "Aoede", "Despina", "Laomedeia", "Achernar", "Achird", "Sulafat"]
+        calm = ["Callirrhoe", "Enceladus", "Umbriel", "Vindemiatrix"]
+        
+        result = []
+        result.append("**Professional Voices:** " + ", ".join(professional[:5]) + " (and more)")
+        result.append("**Friendly Voices:** " + ", ".join(friendly[:5]) + " (and more)")  
+        result.append("**Calm Voices:** " + ", ".join(calm))
+        result.append(f"**Total Available:** {len(GEMINI_VOICES)} unique voices")
+        
+        return "\n".join(result)
+
+    def _format_emotion_tone_combinations(self) -> str:
+        """Format popular emotion and tone combinations."""
+        combinations = [
+            "• **Professional + Informative** - Perfect for news, weather, announcements",
+            "• **Friendly + Conversational** - Great for casual interactions and Q&A",
+            "• **Confident + Formal** - Ideal for commands and system notifications",
+            "• **Happy + Casual** - Wonderful for entertainment and positive feedback",
+            "• **Calm + Storytelling** - Excellent for bedtime stories and relaxation"
+        ]
+        return "\n".join(combinations)
+
+    def _get_language_description(self, lang_code: str) -> str:
+        """Get description for language code."""
+        descriptions = {
+            "en-US": "English (United States) - Full voice support",
+            "en-GB": "English (United Kingdom) - British accent voices",
+            "de-DE": "German (Germany) - Optimized pronunciation",
+            "fr-FR": "French (France) - Native accent adaptation",
+            "es-ES": "Spanish (Spain) - Iberian pronunciation",
+            "it-IT": "Italian (Italy) - Natural intonation",
+            "pt-BR": "Portuguese (Brazil) - Brazilian accent",
+            "ja-JP": "Japanese (Japan) - Tonal pronunciation",
+            "ko-KR": "Korean (South Korea) - Korean speech patterns",
+            "zh-CN": "Chinese (Simplified) - Mandarin tones"
+        }
+        return descriptions.get(lang_code, "Supported language")
+
     @staticmethod
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
@@ -574,15 +656,16 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_DEFAULT_VOICE,
                     default=current_options.get(CONF_DEFAULT_VOICE, current_data.get(CONF_DEFAULT_VOICE, "Kore"))
-                ): vol.In(GEMINI_VOICES),
+                ): vol.In({voice: f"{voice} - {GEMINI_VOICE_DESCRIPTIONS.get(voice, 'Unique voice')}" 
+                          for voice in GEMINI_VOICES}),
                 vol.Optional(
                     CONF_EMOTION,
                     default=current_options.get(CONF_EMOTION, current_data.get(CONF_EMOTION, DEFAULT_EMOTION))
-                ): vol.In(list(EMOTION_OPTIONS.keys())),
+                ): vol.In(EMOTION_OPTIONS),
                 vol.Optional(
                     CONF_TONE_STYLE,
                     default=current_options.get(CONF_TONE_STYLE, current_data.get(CONF_TONE_STYLE, DEFAULT_TONE_STYLE))
-                ): vol.In(list(TONE_STYLE_OPTIONS.keys())),
+                ): vol.In(TONE_STYLE_OPTIONS),
                 vol.Optional(
                     CONF_SPEAKING_RATE,
                     default=current_options.get(CONF_SPEAKING_RATE, current_data.get(CONF_SPEAKING_RATE, DEFAULT_SPEAKING_RATE))

@@ -527,6 +527,8 @@ async def ws_preview_voice(
             connection.send_error(msg["id"], "no_api_key", "No API key available")
             return
         
+        _LOGGER.debug("Voice preview request - Voice: %s, Emotion: %s, Tone: %s", voice_name, emotion, tone_style)
+        
         # Enhance text with emotion and tone styling
         enhanced_text = text
         style_instructions = []
