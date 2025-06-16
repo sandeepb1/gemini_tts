@@ -563,6 +563,8 @@ class GeminiTTSProvider(TextToSpeechEntity):
         """Initialize the TTS provider."""
         self.hass = hass
         self.config_entry = config_entry
+        self.provider = provider  # Store provider attribute
+        self.language = language  # Store language attribute
         self._client = TTSClient(hass, api_key, language, provider)
         self._attr_name = f"Gemini TTS ({provider})"
         self._attr_unique_id = f"{config_entry.entry_id}_tts"
