@@ -47,15 +47,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         # Setup services
         _LOGGER.debug("Setting up services")
-        await async_setup_services(hass)
+        try:
+            await async_setup_services(hass)
+            _LOGGER.debug("Services setup completed successfully")
+        except Exception as service_err:
+            _LOGGER.error("Failed to setup services: %s", service_err, exc_info=True)
+            raise
         
         # Register WebSocket API
         _LOGGER.debug("Registering WebSocket API")
-        async_register_websocket_api(hass)
+        try:
+            async_register_websocket_api(hass)
+            _LOGGER.debug("WebSocket API registration completed successfully")
+        except Exception as ws_err:
+            _LOGGER.error("Failed to register WebSocket API: %s", ws_err, exc_info=True)
+            raise
         
         # Setup platforms
-        _LOGGER.debug("Setting up platforms")
-        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
+        try:
+            await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+            _LOGGER.debug("Platforms setup completed successfully")
+        except Exception as platform_err:
+            _LOGGER.error("Failed to setup platforms: %s", platform_err, exc_info=True)
+            raise
         
         _LOGGER.info("Voice Assistant Gemini integration setup complete")
         return True

@@ -596,34 +596,47 @@ class GeminiTTSProvider(TextToSpeechEntity):
         """Return list of supported options."""
         return ["voice", "speed", "pitch"]
 
-    async def async_get_supported_voices(self, language: str) -> list[TTSVoice]:
-        """Return list of supported voices for language."""
-        try:
-            voices = await self._client.list_voices()
-            
-            # Filter voices by language if specified
-            if language:
-                lang_prefix = language.split("-")[0]  # e.g., "en" from "en-US"
-                voices = [v for v in voices if v.language.startswith(lang_prefix)]
-            
-            # Convert to Home Assistant Voice format
-            return [
-                TTSVoice(
-                    voice_id=voice.name,
-                    name=voice.name,
-                )
-                for voice in voices
-            ]
-        
-        except Exception as err:
-            _LOGGER.error("Error getting supported voices: %s", err)
-            return []
+
 
     @property
-    def supported_voices(self) -> list[TTSVoice] | None:
+    def supported_voices(self) -> list[TTSVoice]:
         """Return list of supported voices."""
-        # Return None to indicate async loading is needed
-        return None
+        # Return a static list of Gemini voices since they're predefined
+        if self.provider == "gemini_tts":
+            return [
+                TTSVoice(voice_id="Kore", name="Kore (Firm)"),
+                TTSVoice(voice_id="Puck", name="Puck (Upbeat)"),
+                TTSVoice(voice_id="Zephyr", name="Zephyr (Bright)"),
+                TTSVoice(voice_id="Orus", name="Orus (Firm)"),
+                TTSVoice(voice_id="Autonoe", name="Autonoe (Bright)"),
+                TTSVoice(voice_id="Umbriel", name="Umbriel (Easy-going)"),
+                TTSVoice(voice_id="Erinome", name="Erinome (Clear)"),
+                TTSVoice(voice_id="Laomedeia", name="Laomedeia (Upbeat)"),
+                TTSVoice(voice_id="Schedar", name="Schedar (Even)"),
+                TTSVoice(voice_id="Achird", name="Achird (Friendly)"),
+                TTSVoice(voice_id="Sadachbia", name="Sadachbia (Lively)"),
+                TTSVoice(voice_id="Fenrir", name="Fenrir (Excitable)"),
+                TTSVoice(voice_id="Aoede", name="Aoede (Breezy)"),
+                TTSVoice(voice_id="Enceladus", name="Enceladus (Breathy)"),
+                TTSVoice(voice_id="Algieba", name="Algieba (Smooth)"),
+                TTSVoice(voice_id="Algenib", name="Algenib (Gravelly)"),
+                TTSVoice(voice_id="Achernar", name="Achernar (Soft)"),
+                TTSVoice(voice_id="Gacrux", name="Gacrux (Mature)"),
+                TTSVoice(voice_id="Zubenelgenubi", name="Zubenelgenubi (Casual)"),
+                TTSVoice(voice_id="Sadaltager", name="Sadaltager (Knowledgeable)"),
+                TTSVoice(voice_id="Charon", name="Charon (Informative)"),
+                TTSVoice(voice_id="Leda", name="Leda (Youthful)"),
+                TTSVoice(voice_id="Callirrhoe", name="Callirrhoe (Easy-going)"),
+                TTSVoice(voice_id="Iapetus", name="Iapetus (Clear)"),
+                TTSVoice(voice_id="Despina", name="Despina (Smooth)"),
+                TTSVoice(voice_id="Rasalgethi", name="Rasalgethi (Informative)"),
+                TTSVoice(voice_id="Alnilam", name="Alnilam (Firm)"),
+                TTSVoice(voice_id="Pulcherrima", name="Pulcherrima (Forward)"),
+                TTSVoice(voice_id="Vindemiatrix", name="Vindemiatrix (Gentle)"),
+                TTSVoice(voice_id="Sulafat", name="Sulafat (Warm)"),
+            ]
+        else:
+            return []
 
     def _pcm_to_wav(self, pcm_data: bytes) -> bytes:
         """Convert raw PCM data to WAV format."""
