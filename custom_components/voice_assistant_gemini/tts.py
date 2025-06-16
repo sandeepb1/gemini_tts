@@ -15,7 +15,13 @@ from .const import (
     RETRY_ATTEMPTS,
     RETRY_BACKOFF_FACTOR,
 )
-from .gemini_client import GeminiClient, GeminiAPIError, GEMINI_VOICES
+try:
+    from .gemini_client import GeminiClient, GeminiAPIError, GEMINI_VOICES
+except ImportError as e:
+    _LOGGER.error("Failed to import GeminiClient: %s", e)
+    GeminiClient = None
+    GeminiAPIError = Exception
+    GEMINI_VOICES = []
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,6 +102,8 @@ class TTSClient:
     async def _get_gemini_client(self):
         """Get Gemini client."""
         if self._gemini_client is None:
+            if GeminiClient is None:
+                raise RuntimeError("GeminiClient not available - import failed")
             self._gemini_client = GeminiClient(self.api_key, self.hass)
         return self._gemini_client
 

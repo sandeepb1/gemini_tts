@@ -91,21 +91,38 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
     
-    # Test Gemini API key using our REST client
+    # Test Gemini API key using direct HTTP request
     try:
-        from .gemini_client import GeminiClient
-        client = GeminiClient(data[CONF_GEMINI_API_KEY], hass)
+        import aiohttp
+        import json
         
-        # Test connection
-        is_valid = await client.test_connection()
-        if not is_valid:
-            raise InvalidAuth("Invalid Gemini API key")
+        # Test the API key with a simple request
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={data[CONF_GEMINI_API_KEY]}"
+        payload = {
+            "contents": [{
+                "parts": [{"text": "Hello"}]
+            }]
+        }
         
-        # Clean up client
-        await client.close()
+        session = async_get_clientsession(hass)
+        async with session.post(url, json=payload) as response:
+            if response.status == 401:
+                raise InvalidAuth("Invalid Gemini API key")
+            elif response.status != 200:
+                error_text = await response.text()
+                _LOGGER.error(f"Gemini API error {response.status}: {error_text}")
+                raise CannotConnect(f"API request failed: {response.status}")
+            
+            # Check if we got a valid response
+            result = await response.json()
+            if "candidates" not in result:
+                raise CannotConnect("Invalid API response format")
         
-    except ImportError as err:
-        _LOGGER.error("Error importing Gemini client: %s", err)
+    except aiohttp.ClientError as err:
+        _LOGGER.error("HTTP client error during validation: %s", err)
+        raise CannotConnect from err
+    except json.JSONDecodeError as err:
+        _LOGGER.error("JSON decode error during validation: %s", err)
         raise CannotConnect from err
     except Exception as err:
         _LOGGER.error("Error validating Gemini API key: %s", err)

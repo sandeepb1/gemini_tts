@@ -14,7 +14,12 @@ from .const import (
     RETRY_ATTEMPTS,
     RETRY_BACKOFF_FACTOR,
 )
-from .gemini_client import GeminiClient, GeminiAPIError
+try:
+    from .gemini_client import GeminiClient, GeminiAPIError
+except ImportError as e:
+    _LOGGER.error("Failed to import GeminiClient: %s", e)
+    GeminiClient = None
+    GeminiAPIError = Exception
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,6 +50,8 @@ class GeminiAgent:
         """Get Gemini client."""
         if self._client is None:
             try:
+                if GeminiClient is None:
+                    raise RuntimeError("GeminiClient not available - import failed")
                 self._client = GeminiClient(self.api_key, self.hass)
             except Exception as err:
                 _LOGGER.error("Error initializing Gemini client: %s", err)
