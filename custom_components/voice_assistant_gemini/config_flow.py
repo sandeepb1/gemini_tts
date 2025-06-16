@@ -17,6 +17,8 @@ from homeassistant.components.http import StaticPathConfig
 from .const import (
     CONF_DEFAULT_LANGUAGE,
     CONF_DEFAULT_VOICE,
+    CONF_EMOTION,
+    CONF_TONE_STYLE,
     CONF_ENABLE_TRANSCRIPT_STORAGE,
     CONF_GEMINI_API_KEY,
     CONF_GEMINI_MODEL,
@@ -45,6 +47,8 @@ from .const import (
     DEFAULT_PITCH,
     DEFAULT_SPEAKING_RATE,
     DEFAULT_SSML,
+    DEFAULT_EMOTION,
+    DEFAULT_TONE_STYLE,
     DEFAULT_STT_PROVIDER,
     DEFAULT_TEMPERATURE,
     DEFAULT_TRANSCRIPT_RETENTION_DAYS,
@@ -52,6 +56,8 @@ from .const import (
     DEFAULT_TTS_PROVIDER,
     DEFAULT_VOLUME_GAIN_DB,
     DOMAIN,
+    EMOTION_OPTIONS,
+    TONE_STYLE_OPTIONS,
     GEMINI_MODELS,
     GEMINI_VOICES,
     GEMINI_VOICE_DESCRIPTIONS,
@@ -75,7 +81,7 @@ STEP_API_DATA_SCHEMA = vol.Schema(
     }
 )
 
-# Step 2: Service Configuration
+# Step 2: Service Configuration  
 STEP_SERVICES_DATA_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_DEFAULT_LANGUAGE, default=DEFAULT_LANGUAGE): vol.In(SUPPORTED_LANGUAGES),
@@ -91,6 +97,8 @@ STEP_SERVICES_DATA_SCHEMA = vol.Schema(
 STEP_VOICE_DATA_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_DEFAULT_VOICE, default="Kore"): vol.In(GEMINI_VOICES),
+        vol.Optional(CONF_EMOTION, default=DEFAULT_EMOTION): vol.In(list(EMOTION_OPTIONS.keys())),
+        vol.Optional(CONF_TONE_STYLE, default=DEFAULT_TONE_STYLE): vol.In(list(TONE_STYLE_OPTIONS.keys())),
         vol.Optional(CONF_SPEAKING_RATE, default=DEFAULT_SPEAKING_RATE): vol.All(
             vol.Coerce(float), vol.Range(min=0.25, max=4.0)
         ),
@@ -131,6 +139,8 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional(CONF_STT_PROVIDER, default=DEFAULT_STT_PROVIDER): vol.In(STT_PROVIDERS),
         vol.Optional(CONF_TTS_PROVIDER, default=DEFAULT_TTS_PROVIDER): vol.In(TTS_PROVIDERS),
         vol.Optional(CONF_DEFAULT_VOICE, default="Kore"): vol.In(GEMINI_VOICES),
+        vol.Optional(CONF_EMOTION, default=DEFAULT_EMOTION): vol.In(list(EMOTION_OPTIONS.keys())),
+        vol.Optional(CONF_TONE_STYLE, default=DEFAULT_TONE_STYLE): vol.In(list(TONE_STYLE_OPTIONS.keys())),
         vol.Optional(CONF_SPEAKING_RATE, default=DEFAULT_SPEAKING_RATE): vol.All(
             vol.Coerce(float), vol.Range(min=0.25, max=4.0)
         ),
@@ -324,10 +334,37 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="services",
             data_schema=vol.Schema(services_schema_dict),
             description_placeholders={
-                "services_info": "Configure AI models and providers:\n\n"
-                               f"Conversation Models:\n{self._format_model_descriptions(CONVERSATION_MODELS)}\n\n"
-                               f"TTS Models:\n{self._format_model_descriptions(TTS_MODELS)}\n\n"
-                               f"STT Models:\n{self._format_model_descriptions(STT_MODELS)}"
+                "services_info": """Configure AI models and service providers:
+
+🌍 **Language & Regional Settings**
+• Default Language: Primary language for all services
+• Optimized for multilingual support
+
+🤖 **AI Model Selection**
+Choose the right models for optimal performance and quality:
+
+**Conversation AI:**
+• Gemini 2.0 Flash (Recommended) - Fast & Accurate responses
+• Gemini Pro - Balanced performance for most use cases  
+• Gemini Ultra - Highest quality, slower responses
+
+**Text-to-Speech Models:**
+• Gemini 2.5 Flash TTS (Recommended) - Natural sounding voices
+• Gemini 2.0 Flash - Basic TTS functionality
+
+**Speech-to-Text Models:**
+• Gemini 2.0 Flash (Recommended) - Fast speech recognition
+• Gemini Pro - Higher accuracy for complex audio
+
+🔧 **Service Providers**
+Configure which services to use for different functions:
+• STT Provider: Speech recognition service
+• TTS Provider: Voice synthesis service
+
+💡 **Quick Setup Tips:**
+• Use recommended models for best results
+• All models support the same features
+• You can change these settings later in options"""
             }
         )
 
@@ -344,14 +381,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         from homeassistant.components.http.static import StaticResource
         from homeassistant.const import CONF_FILENAME
         
-        # Register the voice selector script with Home Assistant
+        # Register the enhanced voice selector script with Home Assistant
         www_path = os.path.join(os.path.dirname(__file__), "www")
-        voice_selector_path = os.path.join(www_path, "voice-simple-selector.js")
+        voice_selector_path = os.path.join(www_path, "voice-config-enhanced.js")
         
         # Make sure the www directory is accessible
         if self.hass.http and os.path.exists(voice_selector_path):
             static_path_config = StaticPathConfig(
-                f"/{DOMAIN}/voice-simple-selector.js",
+                f"/{DOMAIN}/voice-config-enhanced.js",
                 voice_selector_path,
                 True
             )
@@ -361,38 +398,45 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="voice",
             data_schema=STEP_VOICE_DATA_SCHEMA,
             description_placeholders={
-                "voice_info": f"""Configure voice and audio settings:
+                "voice_info": f"""Configure voice and audio settings with enhanced controls:
 
-🎤 **Voice Selection with Descriptions**
-Choose from 30 unique Gemini voices, each with distinct personality traits.
-The interactive selector below shows descriptions for each voice to help you find the perfect match for your assistant.
+🎤 **Enhanced Voice Selection & Preview**
+Choose from 30 unique Gemini voices with live preview functionality.
+The enhanced selector provides:
 
-**Features:**
-• 🎭 30 unique voices with personality descriptions
-• 🔍 Search voices by name or characteristics  
-• ✨ Visual selection with live preview
-• 📱 Responsive design for all devices
+**🎭 Voice Features:**
+• Interactive voice preview with play buttons
+• Search and filter by voice characteristics
+• Emotion and tone style controls
+• Real-time voice sample generation
+• Category-based filtering (Professional, Friendly, Confident, etc.)
 
-**Audio Settings:**
-• Speaking Rate: 0.25 (very slow) to 4.0 (very fast)
-• Pitch: -20.0 (lower) to 20.0 (higher)  
-• Volume Gain: -96.0 (quieter) to 16.0 (louder)
+**🎨 Voice Styling:**
+• Emotion control (Neutral, Happy, Confident, Professional, etc.)
+• Tone style options (Normal, Casual, Formal, Storytelling, etc.)
+• Advanced audio parameters (Rate, Pitch, Volume)
+• SSML support for advanced formatting
 
-<script src="/{DOMAIN}/voice-simple-selector.js"></script>
-<voice-simple-selector></voice-simple-selector>
+**📱 Responsive Design:**
+• Mobile-friendly interface
+• Keyboard navigation support
+• Accessible controls
+• Real-time updates
 
-**Voice Preview:**
-After completing setup, you can test voices using:
-• The Voice Assistant dashboard card
-• Home Assistant's TTS service
-• Developer Tools > Services > `voice_assistant_gemini.tts`
+<script src="/{DOMAIN}/voice-config-enhanced.js"></script>
+<voice-config-enhanced></voice-config-enhanced>
 
-**Popular Voice Recommendations:**
-• **Kore** - Firm and confident (great for commands)
-• **Puck** - Upbeat and energetic (perfect for notifications)  
-• **Zephyr** - Bright and clear (excellent for announcements)
-• **Charon** - Informative and professional (ideal for news/weather)
-• **Leda** - Youthful and friendly (wonderful for casual conversations)"""
+**Quick Setup Tips:**
+• Click any voice to select it
+• Use the play button (▶️) to preview voices
+• Filter by characteristics to find your perfect voice
+• Adjust emotion and tone for different use cases
+
+**Popular Combinations:**
+• **Kore + Confident + Professional** - Great for commands and announcements
+• **Puck + Happy + Casual** - Perfect for friendly notifications
+• **Zephyr + Friendly + Conversational** - Excellent for interactive conversations
+• **Charon + Professional + Informative** - Ideal for news and weather updates"""
             }
         )
 
@@ -531,6 +575,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_DEFAULT_VOICE,
                     default=current_options.get(CONF_DEFAULT_VOICE, current_data.get(CONF_DEFAULT_VOICE, "Kore"))
                 ): vol.In(GEMINI_VOICES),
+                vol.Optional(
+                    CONF_EMOTION,
+                    default=current_options.get(CONF_EMOTION, current_data.get(CONF_EMOTION, DEFAULT_EMOTION))
+                ): vol.In(list(EMOTION_OPTIONS.keys())),
+                vol.Optional(
+                    CONF_TONE_STYLE,
+                    default=current_options.get(CONF_TONE_STYLE, current_data.get(CONF_TONE_STYLE, DEFAULT_TONE_STYLE))
+                ): vol.In(list(TONE_STYLE_OPTIONS.keys())),
                 vol.Optional(
                     CONF_SPEAKING_RATE,
                     default=current_options.get(CONF_SPEAKING_RATE, current_data.get(CONF_SPEAKING_RATE, DEFAULT_SPEAKING_RATE))

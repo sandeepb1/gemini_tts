@@ -17,6 +17,8 @@ CONF_SPEAKING_RATE: Final = "speaking_rate"
 CONF_PITCH: Final = "pitch"
 CONF_VOLUME_GAIN_DB: Final = "volume_gain_db"
 CONF_SSML: Final = "ssml"
+CONF_EMOTION: Final = "emotion"
+CONF_TONE_STYLE: Final = "tone_style"
 CONF_GEMINI_MODEL: Final = "gemini_model"
 CONF_CONVERSATION_MODEL: Final = "conversation_model"
 CONF_TTS_MODEL: Final = "tts_model"
@@ -35,6 +37,8 @@ DEFAULT_SPEAKING_RATE: Final = 1.0
 DEFAULT_PITCH: Final = 0.0
 DEFAULT_VOLUME_GAIN_DB: Final = 0.0
 DEFAULT_SSML: Final = False
+DEFAULT_EMOTION: Final = "neutral"
+DEFAULT_TONE_STYLE: Final = "normal"
 DEFAULT_GEMINI_MODEL: Final = "gemini-2.0-flash"
 DEFAULT_CONVERSATION_MODEL: Final = "gemini-2.0-flash"
 DEFAULT_TTS_MODEL: Final = "gemini-2.5-flash-preview-tts"
@@ -125,6 +129,30 @@ GEMINI_VOICE_DESCRIPTIONS: Final = {
 
 # Logging levels
 LOGGING_LEVELS: Final = ["DEBUG", "INFO", "WARNING", "ERROR"]
+
+# Available emotions for TTS
+EMOTION_OPTIONS: Final = {
+    "neutral": "Neutral - Standard delivery",
+    "happy": "Happy - Upbeat and cheerful",
+    "sad": "Sad - Somber and melancholic", 
+    "excited": "Excited - Energetic and enthusiastic",
+    "calm": "Calm - Relaxed and peaceful",
+    "confident": "Confident - Assertive and strong",
+    "friendly": "Friendly - Warm and approachable",
+    "professional": "Professional - Business-like and formal"
+}
+
+# Available tone styles for TTS
+TONE_STYLE_OPTIONS: Final = {
+    "normal": "Normal - Standard speaking style",
+    "casual": "Casual - Relaxed conversational style", 
+    "formal": "Formal - Professional and structured",
+    "storytelling": "Storytelling - Narrative and engaging",
+    "informative": "Informative - Clear and educational",
+    "conversational": "Conversational - Natural dialogue style",
+    "announcement": "Announcement - Clear and attention-grabbing",
+    "customer_service": "Customer Service - Helpful and polite"
+}
 
 # Available Gemini TTS voices
 GEMINI_VOICES: Final = [

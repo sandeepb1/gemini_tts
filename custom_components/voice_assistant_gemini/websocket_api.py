@@ -14,6 +14,8 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     CONF_DEFAULT_LANGUAGE,
     CONF_DEFAULT_VOICE,
+    CONF_EMOTION,
+    CONF_TONE_STYLE,
     CONF_GEMINI_API_KEY,
     CONF_GEMINI_MODEL,
     CONF_MAX_TOKENS,
@@ -32,6 +34,8 @@ from .const import (
     DEFAULT_PITCH,
     DEFAULT_SPEAKING_RATE,
     DEFAULT_SSML,
+    DEFAULT_EMOTION,
+    DEFAULT_TONE_STYLE,
     DEFAULT_STT_PROVIDER,
     DEFAULT_TEMPERATURE,
     DEFAULT_TTS_PROVIDER,
@@ -473,6 +477,17 @@ async def ws_get_session_stats(
     vol.Required("type"): "voice_assistant_gemini/preview_voice",
     vol.Required("voice_name"): cv.string,
     vol.Optional("text", default="Hello! This is a preview of the selected voice."): cv.string,
+    vol.Optional("emotion", default=DEFAULT_EMOTION): cv.string,
+    vol.Optional("tone_style", default=DEFAULT_TONE_STYLE): cv.string,
+    vol.Optional("speaking_rate", default=DEFAULT_SPEAKING_RATE): vol.All(
+        vol.Coerce(float), vol.Range(min=0.25, max=4.0)
+    ),
+    vol.Optional("pitch", default=DEFAULT_PITCH): vol.All(
+        vol.Coerce(float), vol.Range(min=-20.0, max=20.0)
+    ),
+    vol.Optional("volume_gain_db", default=DEFAULT_VOLUME_GAIN_DB): vol.All(
+        vol.Coerce(float), vol.Range(min=-96.0, max=16.0)
+    ),
     vol.Optional("api_key"): cv.string,
     vol.Optional("language", default=DEFAULT_LANGUAGE): cv.string,
     vol.Optional("provider", default=DEFAULT_TTS_PROVIDER): cv.string,
@@ -488,6 +503,11 @@ async def ws_preview_voice(
         # Get parameters
         voice_name = msg["voice_name"]
         text = msg.get("text", "Hello! This is a preview of the selected voice.")
+        emotion = msg.get("emotion", DEFAULT_EMOTION)
+        tone_style = msg.get("tone_style", DEFAULT_TONE_STYLE)
+        speaking_rate = msg.get("speaking_rate", DEFAULT_SPEAKING_RATE)
+        pitch = msg.get("pitch", DEFAULT_PITCH)
+        volume_gain_db = msg.get("volume_gain_db", DEFAULT_VOLUME_GAIN_DB)
         language = msg.get("language", DEFAULT_LANGUAGE)
         provider = msg.get("provider", DEFAULT_TTS_PROVIDER)
         api_key = msg.get("api_key")
@@ -507,16 +527,52 @@ async def ws_preview_voice(
             connection.send_error(msg["id"], "no_api_key", "No API key available")
             return
         
+        # Enhance text with emotion and tone styling
+        enhanced_text = text
+        style_instructions = []
+        
+        # Add emotion instructions
+        if emotion != "neutral":
+            emotion_map = {
+                "happy": "in a happy and cheerful manner",
+                "sad": "in a somber and melancholic tone",
+                "excited": "with energy and enthusiasm",
+                "calm": "in a relaxed and peaceful way",
+                "confident": "with confidence and strength",
+                "friendly": "in a warm and approachable manner",
+                "professional": "in a business-like and formal tone"
+            }
+            if emotion in emotion_map:
+                style_instructions.append(emotion_map[emotion])
+        
+        # Add tone style instructions
+        if tone_style != "normal":
+            tone_map = {
+                "casual": "in a casual and relaxed conversational style",
+                "formal": "in a professional and structured manner",
+                "storytelling": "in an engaging narrative style",
+                "informative": "in a clear and educational way",
+                "conversational": "as if having a natural conversation",
+                "announcement": "as a clear and important announcement",
+                "customer_service": "in a helpful and polite customer service manner"
+            }
+            if tone_style in tone_map:
+                style_instructions.append(tone_map[tone_style])
+        
+        # Apply styling if instructions exist
+        if style_instructions:
+            enhanced_text = f"Please speak {', '.join(style_instructions)}: {text}"
+        
         # Initialize TTS client
         tts_client = TTSClient(hass, api_key, language, provider)
         
         # Synthesize voice preview
         audio_data = await tts_client.synthesize(
-            text=text,
+            text=enhanced_text,
             voice=voice_name,
-            speaking_rate=1.0,
-            pitch=0.0,
-            volume_gain_db=0.0,
+            speaking_rate=speaking_rate,
+            pitch=pitch,
+            volume_gain_db=volume_gain_db,
             ssml=False
         )
         
@@ -525,10 +581,16 @@ async def ws_preview_voice(
         
         connection.send_result(msg["id"], {
             "voice_name": voice_name,
+            "emotion": emotion,
+            "tone_style": tone_style,
+            "speaking_rate": speaking_rate,
+            "pitch": pitch,
+            "volume_gain_db": volume_gain_db,
             "language": language,
             "provider": provider,
             "audio_data": audio_base64,
             "text": text,
+            "enhanced_text": enhanced_text,
         })
     
     except Exception as err:

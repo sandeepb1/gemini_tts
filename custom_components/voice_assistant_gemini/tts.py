@@ -61,24 +61,26 @@ class TTSClient:
         pitch: float = 0.0,
         volume_gain_db: float = 0.0,
         ssml: bool = False,
+        emotion: str = "neutral",
+        tone_style: str = "normal",
     ) -> bytes:
         """Synthesize text to speech."""
         try:
             if self.provider == "gemini_tts":
                 return await self._synthesize_gemini_tts(
-                    text, voice, speaking_rate, pitch, volume_gain_db, ssml
+                    text, voice, speaking_rate, pitch, volume_gain_db, ssml, emotion, tone_style
                 )
             elif self.provider == "google_cloud":
                 return await self._synthesize_google_cloud(
-                    text, voice, speaking_rate, pitch, volume_gain_db, ssml
+                    text, voice, speaking_rate, pitch, volume_gain_db, ssml, emotion, tone_style
                 )
             elif self.provider == "amazon_polly":
                 return await self._synthesize_amazon_polly(
-                    text, voice, speaking_rate, pitch, volume_gain_db, ssml
+                    text, voice, speaking_rate, pitch, volume_gain_db, ssml, emotion, tone_style
                 )
             elif self.provider == "azure_tts":
                 return await self._synthesize_azure_tts(
-                    text, voice, speaking_rate, pitch, volume_gain_db, ssml
+                    text, voice, speaking_rate, pitch, volume_gain_db, ssml, emotion, tone_style
                 )
             else:
                 raise ValueError(f"Unsupported TTS provider: {self.provider}")
@@ -92,7 +94,7 @@ class TTSClient:
                     self._retry_count, err, backoff_time
                 )
                 await asyncio.sleep(backoff_time)
-                return await self.synthesize(text, voice, speaking_rate, pitch, volume_gain_db, ssml)
+                return await self.synthesize(text, voice, speaking_rate, pitch, volume_gain_db, ssml, emotion, tone_style)
             
             _LOGGER.error("TTS synthesis failed after %d attempts: %s", RETRY_ATTEMPTS, err)
             raise RuntimeError(f"Speech synthesis failed: {err}") from err
@@ -111,6 +113,8 @@ class TTSClient:
         pitch: float,
         volume_gain_db: float,
         ssml: bool,
+        emotion: str = "neutral",
+        tone_style: str = "normal",
     ) -> bytes:
         """Synthesize using Gemini TTS API."""
         try:
@@ -122,21 +126,50 @@ class TTSClient:
             
             # Prepare text with style instructions if needed
             synthesis_text = text
-            if speaking_rate != 1.0 or pitch != 0.0:
-                # Add natural language instructions for style control
-                style_instructions = []
-                if speaking_rate < 0.8:
-                    style_instructions.append("speak slowly")
-                elif speaking_rate > 1.2:
-                    style_instructions.append("speak quickly")
-                
-                if pitch < -0.2:
-                    style_instructions.append("with a lower tone")
-                elif pitch > 0.2:
-                    style_instructions.append("with a higher tone")
-                
-                if style_instructions:
-                    synthesis_text = f"Please {', '.join(style_instructions)}: {text}"
+            style_instructions = []
+            
+            # Add emotion instructions
+            if emotion != "neutral":
+                emotion_map = {
+                    "happy": "in a happy and cheerful manner",
+                    "sad": "in a somber and melancholic tone",
+                    "excited": "with energy and enthusiasm",
+                    "calm": "in a relaxed and peaceful way",
+                    "confident": "with confidence and strength",
+                    "friendly": "in a warm and approachable manner",
+                    "professional": "in a business-like and formal tone"
+                }
+                if emotion in emotion_map:
+                    style_instructions.append(emotion_map[emotion])
+            
+            # Add tone style instructions  
+            if tone_style != "normal":
+                tone_map = {
+                    "casual": "in a casual and relaxed conversational style",
+                    "formal": "in a professional and structured manner",
+                    "storytelling": "in an engaging narrative style",
+                    "informative": "in a clear and educational way",
+                    "conversational": "as if having a natural conversation",
+                    "announcement": "as a clear and important announcement",
+                    "customer_service": "in a helpful and polite customer service manner"
+                }
+                if tone_style in tone_map:
+                    style_instructions.append(tone_map[tone_style])
+            
+            # Add speaking rate and pitch instructions
+            if speaking_rate < 0.8:
+                style_instructions.append("speak slowly")
+            elif speaking_rate > 1.2:
+                style_instructions.append("speak quickly")
+            
+            if pitch < -0.2:
+                style_instructions.append("with a lower tone")
+            elif pitch > 0.2:
+                style_instructions.append("with a higher tone")
+            
+            # Apply styling if instructions exist
+            if style_instructions:
+                synthesis_text = f"Please {', '.join(style_instructions)}: {text}"
             
             # Generate speech
             audio_content = await client.generate_speech(synthesis_text, voice)
@@ -160,6 +193,8 @@ class TTSClient:
         pitch: float,
         volume_gain_db: float,
         ssml: bool,
+        emotion: str = "neutral",
+        tone_style: str = "normal",
     ) -> bytes:
         """Synthesize using Google Cloud TTS."""
         try:
@@ -224,6 +259,8 @@ class TTSClient:
         pitch: float,
         volume_gain_db: float,
         ssml: bool,
+        emotion: str = "neutral",
+        tone_style: str = "normal",
     ) -> bytes:
         """Synthesize using Amazon Polly."""
         try:
@@ -279,6 +316,8 @@ class TTSClient:
         pitch: float,
         volume_gain_db: float,
         ssml: bool,
+        emotion: str = "neutral",
+        tone_style: str = "normal",
     ) -> bytes:
         """Synthesize using Azure TTS."""
         try:
@@ -676,9 +715,15 @@ class GeminiTTSProvider(TextToSpeechEntity):
             volume_gain_db = 0.0
             ssml = False
             
+            # Extract emotion and tone style from options or config
+            config_options = self.config_entry.options
+            config_data = self.config_entry.data
+            emotion = options.get("emotion") or config_options.get("emotion") or config_data.get("emotion", "neutral")
+            tone_style = options.get("tone_style") or config_options.get("tone_style") or config_data.get("tone_style", "normal")
+            
             # Synthesize speech
             audio_data = await self._client.synthesize(
-                message, voice, speaking_rate, pitch, volume_gain_db, ssml
+                message, voice, speaking_rate, pitch, volume_gain_db, ssml, emotion, tone_style
             )
             
             # Ensure we return proper audio format
