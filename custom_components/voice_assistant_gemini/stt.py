@@ -117,7 +117,19 @@ class STTClient:
     async def _transcribe_gemini(self, audio_bytes: bytes) -> str:
         """Transcribe using Gemini API."""
         try:
+            # Validate audio data
+            if not audio_bytes or len(audio_bytes) == 0:
+                _LOGGER.error("Empty audio data provided for transcription")
+                raise RuntimeError("Empty audio data provided")
+            
+            # Check if audio data is too large (20MB limit for inline data)
+            if len(audio_bytes) > 20 * 1024 * 1024:
+                _LOGGER.error(f"Audio data too large: {len(audio_bytes)} bytes (max 20MB)")
+                raise RuntimeError("Audio data exceeds 20MB limit")
+            
             client = await self._get_gemini_client()
+            
+            _LOGGER.debug(f"Transcribing audio with Gemini API, size: {len(audio_bytes)} bytes")
             
             # Use Gemini API for transcription
             transcript = await client.transcribe_audio(audio_bytes, self.language)
@@ -136,8 +148,6 @@ class STTClient:
         except Exception as err:
             _LOGGER.error("Gemini transcription error: %s", err)
             raise
-
-
 
     async def _transcribe_vosk(self, audio_bytes: bytes) -> str:
         """Transcribe using Vosk (offline)."""

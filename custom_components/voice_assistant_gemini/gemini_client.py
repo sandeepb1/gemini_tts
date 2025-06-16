@@ -1,12 +1,15 @@
-"""Gemini API client using direct REST API calls."""
-import asyncio
+"""Gemini API client for Voice Assistant integration."""
+from __future__ import annotations
+
+import base64
 import json
 import logging
-import base64
-from typing import Dict, Any, Optional, List
+from typing import Dict, List, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from .const import GEMINI_VOICES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,6 +58,10 @@ class GeminiClient:
         session = self._get_session()
         
         try:
+            # Log request details for debugging (without API key)
+            _LOGGER.debug(f"Making Gemini API request to endpoint: {endpoint}")
+            _LOGGER.debug(f"Payload structure: {type(payload)}, contents length: {len(payload.get('contents', []))}")
+            
             async with session.post(
                 url,
                 json=payload,
@@ -63,6 +70,15 @@ class GeminiClient:
                 if response.status != 200:
                     error_text = await response.text()
                     _LOGGER.error(f"Gemini API error {response.status}: {error_text}")
+                    
+                    # Add specific handling for common errors
+                    if response.status == 400 and "INVALID_ARGUMENT" in error_text:
+                        _LOGGER.error("INVALID_ARGUMENT error - check audio format, model support, or payload structure")
+                    elif response.status == 403:
+                        _LOGGER.error("Permission denied - check API key and billing status")
+                    elif response.status == 429:
+                        _LOGGER.error("Rate limit exceeded - reduce request frequency")
+                    
                     raise GeminiAPIError(f"API request failed: {response.status} - {error_text}")
                 
                 return await response.json()
@@ -235,6 +251,7 @@ class GeminiClient:
             
             _LOGGER.debug(f"Using MIME type: {mime_type} for audio transcription")
             
+            # Use the correct payload format for audio transcription
             payload = {
                 "contents": [{
                     "parts": [
@@ -255,7 +272,8 @@ class GeminiClient:
                 }
             }
             
-            endpoint = f"models/{GEMINI_MODELS['text']}:generateContent"
+            # Use gemini-2.0-flash which supports audio transcription
+            endpoint = f"models/gemini-2.0-flash:generateContent"
             
             response = await self._make_request(endpoint, payload)
             
