@@ -19,13 +19,7 @@ from .const import (
     RETRY_BACKOFF_FACTOR,
     DOMAIN,
 )
-try:
-    from .gemini_client import GeminiClient, GeminiAPIError, GEMINI_VOICES
-except ImportError as e:
-    _LOGGER.error("Failed to import GeminiClient: %s", e)
-    GeminiClient = None
-    GeminiAPIError = Exception
-    GEMINI_VOICES = []
+from .gemini_client import GeminiClient, GeminiAPIError, GEMINI_VOICES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,8 +100,6 @@ class TTSClient:
     async def _get_gemini_client(self):
         """Get Gemini client."""
         if self._gemini_client is None:
-            if GeminiClient is None:
-                raise RuntimeError("GeminiClient not available - import failed")
             self._gemini_client = GeminiClient(self.api_key, self.hass)
         return self._gemini_client
 
@@ -561,6 +553,7 @@ class GeminiTTSProvider(TextToSpeechEntity):
         provider: str,
     ) -> None:
         """Initialize the TTS provider."""
+        super().__init__()
         self.hass = hass
         self.config_entry = config_entry
         self.provider = provider  # Store provider attribute
@@ -681,6 +674,7 @@ class GeminiTTSProvider(TextToSpeechEntity):
     ) -> TtsAudioType:
         """Return TTS audio."""
         try:
+            _LOGGER.debug("TTS request - provider: %s, message: %s", getattr(self, 'provider', 'NOT_SET'), message)
             if options is None:
                 options = {}
             
