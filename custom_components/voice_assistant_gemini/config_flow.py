@@ -101,6 +101,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         )
         if not response.text:
             raise InvalidAuth("Invalid Gemini API key")
+    except ImportError as err:
+        _LOGGER.warning("google-generativeai package not available during config: %s", err)
+        # Skip validation if package not available - it will be installed after restart
+        _LOGGER.info("Skipping Gemini API validation - package will be installed on restart")
     except Exception as err:
         _LOGGER.error("Error validating Gemini API key: %s", err)
         raise CannotConnect from err
