@@ -222,15 +222,28 @@ class GeminiClient:
             # Convert audio to base64
             audio_b64 = base64.b64encode(audio_data).decode('utf-8')
             
+            # Detect MIME type based on audio data
+            mime_type = "audio/wav"  # Default
+            if audio_data.startswith(b'RIFF'):
+                mime_type = "audio/wav"
+            elif audio_data.startswith(b'\xff\xfb') or audio_data.startswith(b'\xff\xf3') or audio_data.startswith(b'\xff\xf2'):
+                mime_type = "audio/mp3"
+            elif audio_data.startswith(b'fLaC'):
+                mime_type = "audio/flac"
+            elif audio_data.startswith(b'OggS'):
+                mime_type = "audio/ogg"
+            
+            _LOGGER.debug(f"Using MIME type: {mime_type} for audio transcription")
+            
             payload = {
                 "contents": [{
                     "parts": [
                         {
-                            "text": f"Please transcribe this audio to text in {language}:"
+                            "text": "Generate a transcript of the speech."
                         },
                         {
                             "inlineData": {
-                                "mimeType": "audio/wav",
+                                "mimeType": mime_type,
                                 "data": audio_b64
                             }
                         }
@@ -256,6 +269,8 @@ class GeminiClient:
                         # Clean up the transcription (remove any prefixes like "Transcription:")
                         if transcription.lower().startswith("transcription:"):
                             transcription = transcription[14:].strip()
+                        elif transcription.lower().startswith("transcript:"):
+                            transcription = transcription[11:].strip()
                         return transcription
             
             _LOGGER.error(f"Unexpected STT response format: {response}")
