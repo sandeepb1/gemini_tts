@@ -27,12 +27,12 @@ CONF_TRANSCRIPT_RETENTION_DAYS: Final = "transcript_retention_days"
 # Default values
 DEFAULT_LANGUAGE: Final = "en-US"
 DEFAULT_STT_PROVIDER: Final = "google_cloud"
-DEFAULT_TTS_PROVIDER: Final = "google_cloud"
+DEFAULT_TTS_PROVIDER: Final = "gemini_tts"
 DEFAULT_SPEAKING_RATE: Final = 1.0
 DEFAULT_PITCH: Final = 0.0
 DEFAULT_VOLUME_GAIN_DB: Final = 0.0
 DEFAULT_SSML: Final = False
-DEFAULT_GEMINI_MODEL: Final = "gemini-pro"
+DEFAULT_GEMINI_MODEL: Final = "gemini-2.0-flash"
 DEFAULT_TEMPERATURE: Final = 0.7
 DEFAULT_MAX_TOKENS: Final = 2048
 DEFAULT_LOGGING_LEVEL: Final = "INFO"
@@ -59,10 +59,10 @@ SUPPORTED_LANGUAGES: Final = ["en-US", "en-GB", "de-DE", "fr-FR", "es-ES", "it-I
 STT_PROVIDERS: Final = ["google_cloud", "vosk"]
 
 # Supported TTS providers
-TTS_PROVIDERS: Final = ["google_cloud", "amazon_polly", "azure_tts"]
+TTS_PROVIDERS: Final = ["gemini_tts", "google_cloud", "amazon_polly", "azure_tts"]
 
 # Gemini models
-GEMINI_MODELS: Final = ["gemini-pro", "gemini-pro-vision", "gemini-ultra"]
+GEMINI_MODELS: Final = ["gemini-2.0-flash", "gemini-2.5-flash-preview-tts", "gemini-pro", "gemini-pro-vision", "gemini-ultra"]
 
 # Logging levels
 LOGGING_LEVELS: Final = ["DEBUG", "INFO", "WARNING", "ERROR"]

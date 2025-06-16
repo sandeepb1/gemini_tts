@@ -91,20 +91,22 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
     
-    # Test Gemini API key
+    # Test Gemini API key using our REST client
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=data[CONF_GEMINI_API_KEY])
-        model = genai.GenerativeModel(data.get(CONF_GEMINI_MODEL, DEFAULT_GEMINI_MODEL))
-        response = await hass.async_add_executor_job(
-            model.generate_content, "Test connection"
-        )
-        if not response.text:
+        from .gemini_client import GeminiClient
+        client = GeminiClient(data[CONF_GEMINI_API_KEY], hass)
+        
+        # Test connection
+        is_valid = await client.test_connection()
+        if not is_valid:
             raise InvalidAuth("Invalid Gemini API key")
+        
+        # Clean up client
+        await client.close()
+        
     except ImportError as err:
-        _LOGGER.warning("google-generativeai package not available during config: %s", err)
-        # Skip validation if package not available - it will be installed after restart
-        _LOGGER.info("Skipping Gemini API validation - package will be installed on restart")
+        _LOGGER.error("Error importing Gemini client: %s", err)
+        raise CannotConnect from err
     except Exception as err:
         _LOGGER.error("Error validating Gemini API key: %s", err)
         raise CannotConnect from err
