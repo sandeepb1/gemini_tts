@@ -57,6 +57,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> bool:
         websocket_api.async_register_command(hass, ws_get_session_history)
         websocket_api.async_register_command(hass, ws_clear_session)
         websocket_api.async_register_command(hass, ws_get_session_stats)
+        websocket_api.async_register_command(hass, ws_preview_voice)
         
         _LOGGER.info("Voice Assistant Gemini WebSocket API registered")
     
@@ -465,4 +466,71 @@ async def ws_get_session_stats(
     
     except Exception as err:
         _LOGGER.error("WebSocket get_session_stats error: %s", err)
-        connection.send_error(msg["id"], "get_stats_failed", str(err)) 
+        connection.send_error(msg["id"], "get_stats_failed", str(err))
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "voice_assistant_gemini/preview_voice",
+    vol.Required("voice_name"): cv.string,
+    vol.Optional("text", default="Hello! This is a preview of the selected voice."): cv.string,
+    vol.Optional("api_key"): cv.string,
+    vol.Optional("language", default=DEFAULT_LANGUAGE): cv.string,
+    vol.Optional("provider", default=DEFAULT_TTS_PROVIDER): cv.string,
+})
+@websocket_api.async_response
+async def ws_preview_voice(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Preview a voice by generating audio."""
+    try:
+        # Get parameters
+        voice_name = msg["voice_name"]
+        text = msg.get("text", "Hello! This is a preview of the selected voice.")
+        language = msg.get("language", DEFAULT_LANGUAGE)
+        provider = msg.get("provider", DEFAULT_TTS_PROVIDER)
+        api_key = msg.get("api_key")
+        
+        # If no API key provided, try to get from existing config
+        if not api_key:
+            entries = hass.config_entries.async_entries(DOMAIN)
+            if not entries:
+                connection.send_error(msg["id"], "no_config", "No integration configured and no API key provided")
+                return
+            
+            entry = entries[0]
+            config = entry.data
+            api_key = config.get(CONF_TTS_API_KEY) or config.get(CONF_GEMINI_API_KEY)
+        
+        if not api_key:
+            connection.send_error(msg["id"], "no_api_key", "No API key available")
+            return
+        
+        # Initialize TTS client
+        tts_client = TTSClient(hass, api_key, language, provider)
+        
+        # Synthesize voice preview
+        audio_data = await tts_client.synthesize(
+            text=text,
+            voice=voice_name,
+            speaking_rate=1.0,
+            pitch=0.0,
+            volume_gain_db=0.0,
+            ssml=False
+        )
+        
+        # Convert to base64 for transmission
+        audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+        
+        connection.send_result(msg["id"], {
+            "voice_name": voice_name,
+            "language": language,
+            "provider": provider,
+            "audio_data": audio_base64,
+            "text": text,
+        })
+    
+    except Exception as err:
+        _LOGGER.error("WebSocket preview_voice error: %s", err)
+        connection.send_error(msg["id"], "preview_voice_failed", str(err)) 

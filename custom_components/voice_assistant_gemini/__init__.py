@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -18,6 +19,53 @@ from .websocket_api import async_register_websocket_api
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.CONVERSATION, Platform.STT, Platform.TTS]
+
+
+async def async_register_web_resources(hass: HomeAssistant) -> None:
+    """Register web resources for voice preview functionality."""
+    try:
+        # Get the www directory path
+        www_path = os.path.join(os.path.dirname(__file__), "www")
+        
+        if not os.path.exists(www_path):
+            _LOGGER.warning("www directory not found at %s", www_path)
+            return
+        
+        # Register static files if http component is available
+        if hasattr(hass, 'http') and hass.http:
+            # Register voice preview components
+            voice_preview_path = os.path.join(www_path, "voice-preview.js")
+            voice_selector_path = os.path.join(www_path, "voice-config-selector.js")
+            voice_simple_selector_path = os.path.join(www_path, "voice-simple-selector.js")
+            
+            if os.path.exists(voice_preview_path):
+                hass.http.register_static_path(
+                    f"/{DOMAIN}/voice-preview.js",
+                    voice_preview_path,
+                    True
+                )
+                _LOGGER.debug("Registered voice-preview.js")
+            
+            if os.path.exists(voice_selector_path):
+                hass.http.register_static_path(
+                    f"/{DOMAIN}/voice-config-selector.js",
+                    voice_selector_path,
+                    True
+                )
+                _LOGGER.debug("Registered voice-config-selector.js")
+            
+            if os.path.exists(voice_simple_selector_path):
+                hass.http.register_static_path(
+                    f"/{DOMAIN}/voice-simple-selector.js",
+                    voice_simple_selector_path,
+                    True
+                )
+                _LOGGER.debug("Registered voice-simple-selector.js")
+        else:
+            _LOGGER.warning("HTTP component not available, cannot register static resources")
+            
+    except Exception as err:
+        _LOGGER.error("Error registering web resources: %s", err)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -81,6 +129,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as ws_err:
             _LOGGER.error("Failed to register WebSocket API: %s", ws_err, exc_info=True)
             # Don't fail the entire setup for WebSocket errors
+        
+        # Register web resources for voice preview
+        _LOGGER.debug("Registering web resources")
+        try:
+            await async_register_web_resources(hass)
+            _LOGGER.debug("Web resources registration completed successfully")
+        except Exception as web_err:
+            _LOGGER.error("Failed to register web resources: %s", web_err, exc_info=True)
+            # Don't fail the entire setup for web resource errors
         
         # Setup platforms
         _LOGGER.debug("Setting up platforms: %s", PLATFORMS)

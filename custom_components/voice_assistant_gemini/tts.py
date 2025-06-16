@@ -604,40 +604,16 @@ class GeminiTTSProvider(TextToSpeechEntity):
     @property
     def supported_voices(self) -> list[TTSVoice]:
         """Return list of supported voices."""
-        # Return a static list of Gemini voices since they're predefined
+        from .const import GEMINI_VOICES, GEMINI_VOICE_DESCRIPTIONS
+        
+        # Return a comprehensive list of Gemini voices with descriptions
         if self.provider == "gemini_tts":
-            return [
-                TTSVoice(voice_id="Kore", name="Kore (Firm)"),
-                TTSVoice(voice_id="Puck", name="Puck (Upbeat)"),
-                TTSVoice(voice_id="Zephyr", name="Zephyr (Bright)"),
-                TTSVoice(voice_id="Orus", name="Orus (Firm)"),
-                TTSVoice(voice_id="Autonoe", name="Autonoe (Bright)"),
-                TTSVoice(voice_id="Umbriel", name="Umbriel (Easy-going)"),
-                TTSVoice(voice_id="Erinome", name="Erinome (Clear)"),
-                TTSVoice(voice_id="Laomedeia", name="Laomedeia (Upbeat)"),
-                TTSVoice(voice_id="Schedar", name="Schedar (Even)"),
-                TTSVoice(voice_id="Achird", name="Achird (Friendly)"),
-                TTSVoice(voice_id="Sadachbia", name="Sadachbia (Lively)"),
-                TTSVoice(voice_id="Fenrir", name="Fenrir (Excitable)"),
-                TTSVoice(voice_id="Aoede", name="Aoede (Breezy)"),
-                TTSVoice(voice_id="Enceladus", name="Enceladus (Breathy)"),
-                TTSVoice(voice_id="Algieba", name="Algieba (Smooth)"),
-                TTSVoice(voice_id="Algenib", name="Algenib (Gravelly)"),
-                TTSVoice(voice_id="Achernar", name="Achernar (Soft)"),
-                TTSVoice(voice_id="Gacrux", name="Gacrux (Mature)"),
-                TTSVoice(voice_id="Zubenelgenubi", name="Zubenelgenubi (Casual)"),
-                TTSVoice(voice_id="Sadaltager", name="Sadaltager (Knowledgeable)"),
-                TTSVoice(voice_id="Charon", name="Charon (Informative)"),
-                TTSVoice(voice_id="Leda", name="Leda (Youthful)"),
-                TTSVoice(voice_id="Callirrhoe", name="Callirrhoe (Easy-going)"),
-                TTSVoice(voice_id="Iapetus", name="Iapetus (Clear)"),
-                TTSVoice(voice_id="Despina", name="Despina (Smooth)"),
-                TTSVoice(voice_id="Rasalgethi", name="Rasalgethi (Informative)"),
-                TTSVoice(voice_id="Alnilam", name="Alnilam (Firm)"),
-                TTSVoice(voice_id="Pulcherrima", name="Pulcherrima (Forward)"),
-                TTSVoice(voice_id="Vindemiatrix", name="Vindemiatrix (Gentle)"),
-                TTSVoice(voice_id="Sulafat", name="Sulafat (Warm)"),
-            ]
+            voices = []
+            for voice_id in GEMINI_VOICES:
+                description = GEMINI_VOICE_DESCRIPTIONS.get(voice_id, "")
+                display_name = f"{voice_id} - {description}" if description else voice_id
+                voices.append(TTSVoice(voice_id=voice_id, name=display_name))
+            return voices
         else:
             return []
 

@@ -337,15 +337,59 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._config_data.update(user_input)
             return await self.async_step_final()
 
+        # Register the voice selector script with Home Assistant
+        import os
+        from homeassistant.components.http.static import StaticResource
+        from homeassistant.const import CONF_FILENAME
+        
+        # Register the voice selector script with Home Assistant
+        www_path = os.path.join(os.path.dirname(__file__), "www")
+        voice_selector_path = os.path.join(www_path, "voice-simple-selector.js")
+        
+        # Make sure the www directory is accessible
+        if self.hass.http:
+            self.hass.http.register_static_path(
+                f"/{DOMAIN}/voice-simple-selector.js",
+                voice_selector_path,
+                True
+            )
+
         return self.async_show_form(
             step_id="voice",
             data_schema=STEP_VOICE_DATA_SCHEMA,
             description_placeholders={
-                "voice_info": "Configure voice and audio settings:\n\n"
-                             "Voice Descriptions:\n" + self._format_voice_descriptions() + "\n\n"
-                             "• Speaking Rate: 0.25 (very slow) to 4.0 (very fast)\n"
-                             "• Pitch: -20.0 (lower) to 20.0 (higher)\n"
-                             "• Volume Gain: -96.0 (quieter) to 16.0 (louder)"
+                "voice_info": f"""Configure voice and audio settings:
+
+🎤 **Voice Selection with Descriptions**
+Choose from 30 unique Gemini voices, each with distinct personality traits.
+The interactive selector below shows descriptions for each voice to help you find the perfect match for your assistant.
+
+**Features:**
+• 🎭 30 unique voices with personality descriptions
+• 🔍 Search voices by name or characteristics  
+• ✨ Visual selection with live preview
+• 📱 Responsive design for all devices
+
+**Audio Settings:**
+• Speaking Rate: 0.25 (very slow) to 4.0 (very fast)
+• Pitch: -20.0 (lower) to 20.0 (higher)  
+• Volume Gain: -96.0 (quieter) to 16.0 (louder)
+
+<script src="/{DOMAIN}/voice-simple-selector.js"></script>
+<voice-simple-selector></voice-simple-selector>
+
+**Voice Preview:**
+After completing setup, you can test voices using:
+• The Voice Assistant dashboard card
+• Home Assistant's TTS service
+• Developer Tools > Services > `voice_assistant_gemini.tts`
+
+**Popular Voice Recommendations:**
+• **Kore** - Firm and confident (great for commands)
+• **Puck** - Upbeat and energetic (perfect for notifications)  
+• **Zephyr** - Bright and clear (excellent for announcements)
+• **Charon** - Informative and professional (ideal for news/weather)
+• **Leda** - Youthful and friendly (wonderful for casual conversations)"""
             }
         )
 

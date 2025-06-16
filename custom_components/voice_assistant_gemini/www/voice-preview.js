@@ -262,25 +262,208 @@ class VoicePreviewCard extends HTMLElement {
             this.showStatus('Please select a voice first', 'error');
             return;
         }
-        
-        const text = this.shadowRoot.querySelector('.text-input').value || 
-                    "Hello! This is a preview of the selected voice.";
-        
-        this.showStatus('Generating voice preview...', 'loading');
-        this.shadowRoot.getElementById('previewBtn').disabled = true;
-        
+
+        const previewBtn = this.shadowRoot.getElementById('previewBtn');
+        const textInput = this.shadowRoot.querySelector('.text-input');
+        const text = textInput.value.trim() || "Hello! This is a preview of the selected voice.";
+
         try {
-            // Call the voice preview service
-            await window.hassConnection.callService('voice_assistant_gemini', 'preview_voice', {
+            // Update UI to show loading
+            const originalText = previewBtn.textContent;
+            previewBtn.textContent = '🔄 Generating...';
+            previewBtn.disabled = true;
+            
+            this.showStatus('Generating voice preview...', 'loading');
+            
+            // Call the Home Assistant WebSocket API directly
+            const result = await this.callHomeAssistantService('voice_assistant_gemini.synthesize', {
+                text: text,
                 voice: this.selectedVoice,
-                text: text
+                speaking_rate: 1.0,
+                pitch: 0.0,
+                volume_gain_db: 0.0
             });
+            
+            if (result && result.audio_data) {
+                // Convert base64 to audio and play
+                await this.playAudioFromBase64(result.audio_data);
+                this.showStatus(`🔊 Playing preview of ${this.selectedVoice}`, 'success');
+            } else {
+                throw new Error('No audio data received from service');
+            }
         } catch (error) {
-            this.showStatus(`Error: ${error.message}`, 'error');
-            this.shadowRoot.getElementById('previewBtn').disabled = false;
+            console.error('Voice preview error:', error);
+            this.showStatus(`❌ Preview failed: ${error.message}`, 'error');
+            
+            // Fallback to WebSocket API
+            try {
+                this.showStatus('Trying alternative method...', 'loading');
+                const wsResult = await this.callWebSocketAPI({
+                    type: 'voice_assistant_gemini/synthesize',
+                    text: text,
+                    voice: this.selectedVoice
+                });
+                
+                if (wsResult && wsResult.audio_data) {
+                    await this.playAudioFromBase64(wsResult.audio_data);
+                    this.showStatus(`🔊 Playing preview of ${this.selectedVoice}`, 'success');
+                } else {
+                    throw new Error('No audio data received from WebSocket API');
+                }
+            } catch (wsError) {
+                console.error('WebSocket preview error:', wsError);
+                this.showStatus(`❌ Preview failed: ${wsError.message}. Make sure the integration is properly configured.`, 'error');
+            }
+        } finally {
+            // Reset UI
+            previewBtn.textContent = originalText;
+            previewBtn.disabled = false;
         }
     }
-    
+
+    async callHomeAssistantService(service, data) {
+        return new Promise((resolve, reject) => {
+            // Use Home Assistant's service calling mechanism if available
+            if (window.hass && window.hass.callService) {
+                const [domain, serviceAction] = service.split('.');
+                window.hass.callService(domain, serviceAction, data)
+                    .then(resolve)
+                    .catch(reject);
+                return;
+            }
+            
+            // Fallback to fetch API
+            fetch('/api/services/' + service, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.getAccessToken()}`
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.json();
+            })
+            .then(resolve)
+            .catch(reject);
+        });
+    }
+
+    async callWebSocketAPI(message) {
+        return new Promise((resolve, reject) => {
+            // Use Home Assistant's connection if available
+            if (window.hassConnection && window.hassConnection.sendMessagePromise) {
+                window.hassConnection.sendMessagePromise(message)
+                    .then(resolve)
+                    .catch(reject);
+                return;
+            }
+            
+            // Fallback to creating our own connection
+            const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/websocket`;
+            const ws = new WebSocket(wsUrl);
+            
+            let messageId = Math.floor(Math.random() * 1000000);
+            let timeout = setTimeout(() => {
+                ws.close();
+                reject(new Error('WebSocket request timeout'));
+            }, 30000); // 30 second timeout
+            
+            ws.onopen = () => {
+                ws.send(JSON.stringify({
+                    type: 'auth',
+                    access_token: this.getAccessToken()
+                }));
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'auth_required') {
+                    return;
+                } else if (data.type === 'auth_ok') {
+                    ws.send(JSON.stringify({
+                        id: messageId,
+                        ...message
+                    }));
+                } else if (data.type === 'result' && data.id === messageId) {
+                    clearTimeout(timeout);
+                    ws.close();
+                    if (data.success) {
+                        resolve(data.result);
+                    } else {
+                        reject(new Error(data.error?.message || 'API call failed'));
+                    }
+                }
+            };
+            
+            ws.onerror = (error) => {
+                clearTimeout(timeout);
+                reject(new Error('WebSocket connection failed'));
+            };
+            
+            ws.onclose = (event) => {
+                clearTimeout(timeout);
+                if (!event.wasClean) {
+                    reject(new Error('WebSocket connection closed unexpectedly'));
+                }
+            };
+        });
+    }
+
+    getAccessToken() {
+        // Try multiple methods to get the access token
+        
+        // Method 1: From Home Assistant object
+        if (window.hass && window.hass.auth && window.hass.auth.data && window.hass.auth.data.access_token) {
+            return window.hass.auth.data.access_token;
+        }
+        
+        // Method 2: From localStorage
+        if (window.localStorage) {
+            const hassTokens = localStorage.getItem('hassTokens');
+            if (hassTokens) {
+                try {
+                    const tokens = JSON.parse(hassTokens);
+                    if (tokens.access_token) {
+                        return tokens.access_token;
+                    }
+                } catch (e) {
+                    // Ignore parsing errors
+                }
+            }
+        }
+        
+        // Method 3: From sessionStorage
+        if (window.sessionStorage) {
+            const token = sessionStorage.getItem('hassAccessToken');
+            if (token) {
+                return token;
+            }
+        }
+        
+        // Method 4: From URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const tokenFromUrl = urlParams.get('access_token');
+        if (tokenFromUrl) {
+            return tokenFromUrl;
+        }
+        
+        // Fallback - this will likely fail but at least we try
+        console.warn('Could not find Home Assistant access token');
+        return 'unknown_token';
+    }
+
+    async playAudioFromBase64(base64Data) {
+        const audioPlayer = this.shadowRoot.getElementById('audioPlayer');
+        audioPlayer.src = `data:audio/wav;base64,${base64Data}`;
+        audioPlayer.classList.remove('hidden');
+        await audioPlayer.play();
+    }
+
     handlePreviewResult(data) {
         this.shadowRoot.getElementById('previewBtn').disabled = false;
         
