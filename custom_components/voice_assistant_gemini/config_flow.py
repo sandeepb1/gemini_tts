@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import voluptuous as vol
@@ -11,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.components.http import StaticPathConfig
 
 from .const import (
     CONF_DEFAULT_LANGUAGE,
@@ -347,12 +349,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         voice_selector_path = os.path.join(www_path, "voice-simple-selector.js")
         
         # Make sure the www directory is accessible
-        if self.hass.http:
-            self.hass.http.register_static_path(
+        if self.hass.http and os.path.exists(voice_selector_path):
+            static_path_config = StaticPathConfig(
                 f"/{DOMAIN}/voice-simple-selector.js",
                 voice_selector_path,
                 True
             )
+            await self.hass.http.async_register_static_paths([static_path_config])
 
         return self.async_show_form(
             step_id="voice",

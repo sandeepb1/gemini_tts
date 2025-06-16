@@ -10,6 +10,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
+from homeassistant.components.http import StaticPathConfig
 
 from .const import DOMAIN, STORAGE_KEY, STORAGE_VERSION
 from .coordinator import VoiceAssistantGeminiCoordinator
@@ -38,29 +39,35 @@ async def async_register_web_resources(hass: HomeAssistant) -> None:
             voice_selector_path = os.path.join(www_path, "voice-config-selector.js")
             voice_simple_selector_path = os.path.join(www_path, "voice-simple-selector.js")
             
+            static_paths = []
+            
             if os.path.exists(voice_preview_path):
-                hass.http.register_static_path(
+                static_paths.append(StaticPathConfig(
                     f"/{DOMAIN}/voice-preview.js",
                     voice_preview_path,
                     True
-                )
-                _LOGGER.debug("Registered voice-preview.js")
+                ))
+                _LOGGER.debug("Added voice-preview.js to static paths")
             
             if os.path.exists(voice_selector_path):
-                hass.http.register_static_path(
+                static_paths.append(StaticPathConfig(
                     f"/{DOMAIN}/voice-config-selector.js",
                     voice_selector_path,
                     True
-                )
-                _LOGGER.debug("Registered voice-config-selector.js")
+                ))
+                _LOGGER.debug("Added voice-config-selector.js to static paths")
             
             if os.path.exists(voice_simple_selector_path):
-                hass.http.register_static_path(
+                static_paths.append(StaticPathConfig(
                     f"/{DOMAIN}/voice-simple-selector.js",
                     voice_simple_selector_path,
                     True
-                )
-                _LOGGER.debug("Registered voice-simple-selector.js")
+                ))
+                _LOGGER.debug("Added voice-simple-selector.js to static paths")
+            
+            if static_paths:
+                await hass.http.async_register_static_paths(static_paths)
+                _LOGGER.debug("Registered %d static paths", len(static_paths))
         else:
             _LOGGER.warning("HTTP component not available, cannot register static resources")
             
