@@ -15,6 +15,7 @@ from .const import (
     RETRY_ATTEMPTS,
     RETRY_BACKOFF_FACTOR,
 )
+from .gemini_client import GeminiClient, GeminiAPIError, GEMINI_VOICES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class TTSClient:
         hass: HomeAssistant,
         api_key: str,
         language: str = "en-US",
-        provider: str = "google_cloud",
+        provider: str = "gemini_tts",
     ) -> None:
         """Initialize the TTS client."""
         self.hass = hass
@@ -43,6 +44,7 @@ class TTSClient:
         self.language = language
         self.provider = provider
         self._client = None
+        self._gemini_client = None
         self._retry_count = 0
         self._voices_cache = None
         self._voices_cache_time = None
@@ -58,7 +60,11 @@ class TTSClient:
     ) -> bytes:
         """Synthesize text to speech."""
         try:
-            if self.provider == "google_cloud":
+            if self.provider == "gemini_tts":
+                return await self._synthesize_gemini_tts(
+                    text, voice, speaking_rate, pitch, volume_gain_db, ssml
+                )
+            elif self.provider == "google_cloud":
                 return await self._synthesize_google_cloud(
                     text, voice, speaking_rate, pitch, volume_gain_db, ssml
                 )
@@ -86,6 +92,61 @@ class TTSClient:
             
             _LOGGER.error("TTS synthesis failed after %d attempts: %s", RETRY_ATTEMPTS, err)
             raise RuntimeError(f"Speech synthesis failed: {err}") from err
+
+    async def _get_gemini_client(self):
+        """Get Gemini client."""
+        if self._gemini_client is None:
+            self._gemini_client = GeminiClient(self.api_key, self.hass)
+        return self._gemini_client
+
+    async def _synthesize_gemini_tts(
+        self,
+        text: str,
+        voice: str,
+        speaking_rate: float,
+        pitch: float,
+        volume_gain_db: float,
+        ssml: bool,
+    ) -> bytes:
+        """Synthesize using Gemini TTS API."""
+        try:
+            client = await self._get_gemini_client()
+            
+            # Use default voice if none specified
+            if not voice or voice not in GEMINI_VOICES:
+                voice = "Kore"  # Default voice
+            
+            # Prepare text with style instructions if needed
+            synthesis_text = text
+            if speaking_rate != 1.0 or pitch != 0.0:
+                # Add natural language instructions for style control
+                style_instructions = []
+                if speaking_rate < 0.8:
+                    style_instructions.append("speak slowly")
+                elif speaking_rate > 1.2:
+                    style_instructions.append("speak quickly")
+                
+                if pitch < -0.2:
+                    style_instructions.append("with a lower tone")
+                elif pitch > 0.2:
+                    style_instructions.append("with a higher tone")
+                
+                if style_instructions:
+                    synthesis_text = f"Please {', '.join(style_instructions)}: {text}"
+            
+            # Generate speech
+            audio_content = await client.generate_speech(synthesis_text, voice)
+            
+            _LOGGER.debug("Synthesized %d bytes of audio with Gemini TTS", len(audio_content))
+            self._retry_count = 0  # Reset retry count on success
+            return audio_content
+        
+        except GeminiAPIError as err:
+            _LOGGER.error("Gemini TTS synthesis error: %s", err)
+            raise RuntimeError(f"Gemini TTS synthesis failed: {err}") from err
+        except Exception as err:
+            _LOGGER.error("Unexpected error in Gemini TTS synthesis: %s", err)
+            raise
 
     async def _synthesize_google_cloud(
         self,
@@ -295,7 +356,9 @@ class TTSClient:
             return self._voices_cache
         
         try:
-            if self.provider == "google_cloud":
+            if self.provider == "gemini_tts":
+                voices = await self._list_gemini_voices()
+            elif self.provider == "google_cloud":
                 voices = await self._list_google_voices()
             elif self.provider == "amazon_polly":
                 voices = await self._list_polly_voices()
@@ -312,6 +375,38 @@ class TTSClient:
         
         except Exception as err:
             _LOGGER.error("Error listing voices: %s", err)
+            return []
+
+    async def _list_gemini_voices(self) -> list[Voice]:
+        """List Gemini TTS voices."""
+        try:
+            # Voice descriptions from the API documentation
+            voice_descriptions = {
+                "Zephyr": "Bright", "Puck": "Upbeat", "Charon": "Informative",
+                "Kore": "Firm", "Fenrir": "Excitable", "Leda": "Youthful",
+                "Orus": "Firm", "Aoede": "Breezy", "Callirrhoe": "Easy-going",
+                "Autonoe": "Bright", "Enceladus": "Breathy", "Iapetus": "Clear",
+                "Umbriel": "Easy-going", "Algieba": "Smooth", "Despina": "Smooth",
+                "Erinome": "Clear", "Algenib": "Gravelly", "Rasalgethi": "Informative",
+                "Laomedeia": "Upbeat", "Achernar": "Soft", "Alnilam": "Firm",
+                "Schedar": "Even", "Gacrux": "Mature", "Pulcherrima": "Forward",
+                "Achird": "Friendly", "Zubenelgenubi": "Casual", "Vindemiatrix": "Gentle",
+                "Sadachbia": "Lively", "Sadaltager": "Knowledgeable", "Sulafat": "Warm"
+            }
+            
+            voices = []
+            for voice_name in GEMINI_VOICES:
+                voices.append(Voice(
+                    name=voice_name,
+                    language="en-US",  # Gemini TTS supports multiple languages automatically
+                    gender="neutral",  # Gemini voices are not specifically gendered
+                    neural=True,  # All Gemini voices are neural
+                ))
+            
+            return voices
+        
+        except Exception as err:
+            _LOGGER.error("Error listing Gemini voices: %s", err)
             return []
 
     async def _list_google_voices(self) -> list[Voice]:
@@ -400,7 +495,10 @@ class TTSClient:
     async def test_connection(self) -> bool:
         """Test the TTS connection."""
         try:
-            if self.provider == "google_cloud":
+            if self.provider == "gemini_tts":
+                client = await self._get_gemini_client()
+                return await client.test_connection()
+            elif self.provider == "google_cloud":
                 client = await self._get_google_client()
                 # Test with a simple synthesis
                 audio = await self.synthesize("Test", ssml=False)

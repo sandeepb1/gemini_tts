@@ -14,6 +14,7 @@ from .const import (
     RETRY_ATTEMPTS,
     RETRY_BACKOFF_FACTOR,
 )
+from .gemini_client import GeminiClient, GeminiAPIError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class GeminiAgent:
         self,
         hass: HomeAssistant,
         api_key: str,
-        model: str = "gemini-pro",
+        model: str = "gemini-2.0-flash",
         temperature: float = 0.7,
         max_tokens: int = 2048,
         coordinator=None,
@@ -44,13 +45,7 @@ class GeminiAgent:
         """Get Gemini client."""
         if self._client is None:
             try:
-                import google.generativeai as genai
-                
-                genai.configure(api_key=self.api_key)
-                self._client = genai.GenerativeModel(self.model)
-            except ImportError as err:
-                _LOGGER.error("Google Generative AI library not installed: %s", err)
-                raise RuntimeError("Google Generative AI library not available") from err
+                self._client = GeminiClient(self.api_key, self.hass)
             except Exception as err:
                 _LOGGER.error("Error initializing Gemini client: %s", err)
                 raise RuntimeError(f"Failed to initialize Gemini client: {err}") from err
@@ -142,30 +137,19 @@ class GeminiAgent:
         try:
             client = await self._get_client()
             
-            # Convert messages to Gemini format
-            gemini_prompt = self._convert_messages_to_prompt(messages)
-            
-            def _sync_generate():
-                response = client.generate_content(
-                    gemini_prompt,
-                    generation_config={
-                        "temperature": self.temperature,
-                        "max_output_tokens": self.max_tokens,
-                        "top_p": 0.8,
-                        "top_k": 40,
-                    }
-                )
-                return response.text
-            
-            response_text = await self.hass.async_add_executor_job(_sync_generate)
+            # Use the new conversation method
+            response_text = await client.conversation(messages)
             
             if not response_text:
                 raise RuntimeError("Empty response from Gemini")
             
             return response_text.strip()
         
-        except Exception as err:
+        except GeminiAPIError as err:
             _LOGGER.error("Gemini API generation error: %s", err)
+            raise RuntimeError(f"Gemini API error: {err}") from err
+        except Exception as err:
+            _LOGGER.error("Unexpected error in response generation: %s", err)
             raise
 
     def _convert_messages_to_prompt(self, messages: list[dict[str, str]]) -> str:
@@ -293,13 +277,7 @@ class GeminiAgent:
         """Test the Gemini connection."""
         try:
             client = await self._get_client()
-            
-            def _test():
-                response = client.generate_content("Hello, this is a test.")
-                return response.text is not None
-            
-            result = await self.hass.async_add_executor_job(_test)
-            return result
+            return await client.test_connection()
         except Exception as err:
             _LOGGER.error("Gemini connection test failed: %s", err)
             return False
@@ -323,20 +301,9 @@ class GeminiAgent:
 
 Summary:"""
             
-            # Generate summary without saving to session
+            # Generate summary using the new client
             client = await self._get_client()
-            
-            def _sync_summarize():
-                response = client.generate_content(
-                    summary_prompt,
-                    generation_config={
-                        "temperature": 0.3,
-                        "max_output_tokens": 200,
-                    }
-                )
-                return response.text
-            
-            summary = await self.hass.async_add_executor_job(_sync_summarize)
+            summary = await client.generate_text(summary_prompt)
             return summary.strip() if summary else "Unable to generate summary."
         
         except Exception as err:
