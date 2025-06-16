@@ -235,20 +235,46 @@ class GeminiClient:
     async def transcribe_audio(self, audio_data: bytes, language: str = "en-US") -> str:
         """Transcribe audio using Gemini API."""
         try:
-            # Convert audio to base64
-            audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+            # Debug: Check the first few bytes of audio data
+            first_bytes = audio_data[:16] if len(audio_data) >= 16 else audio_data
+            _LOGGER.debug(f"Audio data first 16 bytes: {first_bytes}")
+            _LOGGER.debug(f"Audio data starts with RIFF: {audio_data.startswith(b'RIFF')}")
+            _LOGGER.debug(f"Audio data size: {len(audio_data)} bytes")
             
-            # Detect MIME type based on audio data
-            mime_type = "audio/wav"  # Default
+            # Detect if this is raw PCM data (common for ESPHome/voice assistants)
+            is_raw_pcm = False
+            
             if audio_data.startswith(b'RIFF'):
-                mime_type = "audio/wav"
+                # Check if it's a proper WAV file (RIFF + WAVE)
+                if len(audio_data) >= 12 and audio_data[8:12] == b'WAVE':
+                    mime_type = "audio/wav"
+                    _LOGGER.debug("Detected proper WAV format (RIFF+WAVE)")
+                else:
+                    _LOGGER.debug("RIFF format but not WAVE - treating as audio/wav")
+                    mime_type = "audio/wav"
             elif audio_data.startswith(b'\xff\xfb') or audio_data.startswith(b'\xff\xf3') or audio_data.startswith(b'\xff\xf2'):
                 mime_type = "audio/mp3"
+                _LOGGER.debug("Detected MP3 format")
             elif audio_data.startswith(b'fLaC'):
                 mime_type = "audio/flac"
+                _LOGGER.debug("Detected FLAC format")
             elif audio_data.startswith(b'OggS'):
                 mime_type = "audio/ogg"
+                _LOGGER.debug("Detected OGG format")
+            else:
+                # This is likely raw PCM data from ESPHome
+                _LOGGER.info(f"No recognized audio header found, treating as raw PCM data")
+                _LOGGER.info(f"Raw PCM data size: {len(audio_data)} bytes, first 16 bytes: {first_bytes.hex()}")
+                is_raw_pcm = True
+                mime_type = "audio/wav"
+                
+                # Create proper WAV header for raw PCM data
+                # ESPHome typically sends 16kHz, 16-bit, mono PCM
+                audio_data = self._create_wav_from_pcm(audio_data)
+                _LOGGER.info(f"Created WAV container from raw PCM, new size: {len(audio_data)} bytes")
             
+            # Convert audio to base64
+            audio_b64 = base64.b64encode(audio_data).decode('utf-8')
             _LOGGER.debug(f"Using MIME type: {mime_type} for audio transcription")
             
             # Use the correct payload format for audio transcription
@@ -256,7 +282,7 @@ class GeminiClient:
                 "contents": [{
                     "parts": [
                         {
-                            "text": "Generate a transcript of the speech."
+                            "text": "Please transcribe the speech in this audio."
                         },
                         {
                             "inlineData": {
@@ -285,10 +311,15 @@ class GeminiClient:
                     if parts and "text" in parts[0]:
                         transcription = parts[0]["text"].strip()
                         # Clean up the transcription (remove any prefixes like "Transcription:")
-                        if transcription.lower().startswith("transcription:"):
+                        transcription_lower = transcription.lower()
+                        if transcription_lower.startswith("transcription:"):
                             transcription = transcription[14:].strip()
-                        elif transcription.lower().startswith("transcript:"):
+                        elif transcription_lower.startswith("transcript:"):
                             transcription = transcription[11:].strip()
+                        elif transcription_lower.startswith("the transcription is:"):
+                            transcription = transcription[21:].strip()
+                        elif transcription_lower.startswith("speech transcription:"):
+                            transcription = transcription[21:].strip()
                         return transcription
             
             _LOGGER.error(f"Unexpected STT response format: {response}")
@@ -297,6 +328,49 @@ class GeminiClient:
         except Exception as e:
             _LOGGER.error(f"Error transcribing audio: {e}")
             raise GeminiAPIError(f"Audio transcription failed: {e}")
+
+    def _create_wav_from_pcm(self, pcm_data: bytes) -> bytes:
+        """Create a WAV file from raw PCM data."""
+        # Assume standard ESPHome parameters: 16kHz, 16-bit, mono
+        sample_rate = 16000
+        bits_per_sample = 16
+        channels = 1
+        
+        # Calculate derived values
+        byte_rate = sample_rate * channels * bits_per_sample // 8
+        block_align = channels * bits_per_sample // 8
+        data_size = len(pcm_data)
+        file_size = 36 + data_size
+        
+        _LOGGER.debug(f"Creating WAV header: sample_rate={sample_rate}, channels={channels}, bits_per_sample={bits_per_sample}")
+        _LOGGER.debug(f"PCM data size: {data_size}, expected file size: {file_size + 8}")
+        
+        # Create WAV header
+        header = bytearray()
+        
+        # RIFF header
+        header.extend(b'RIFF')
+        header.extend(file_size.to_bytes(4, 'little'))
+        header.extend(b'WAVE')
+        
+        # fmt chunk
+        header.extend(b'fmt ')
+        header.extend((16).to_bytes(4, 'little'))  # Subchunk1Size (16 for PCM)
+        header.extend((1).to_bytes(2, 'little'))   # AudioFormat (1 for PCM)
+        header.extend(channels.to_bytes(2, 'little'))
+        header.extend(sample_rate.to_bytes(4, 'little'))
+        header.extend(byte_rate.to_bytes(4, 'little'))
+        header.extend(block_align.to_bytes(2, 'little'))
+        header.extend(bits_per_sample.to_bytes(2, 'little'))
+        
+        # data chunk
+        header.extend(b'data')
+        header.extend(data_size.to_bytes(4, 'little'))
+        
+        wav_data = bytes(header) + pcm_data
+        _LOGGER.debug(f"Created WAV file with header size: {len(header)} bytes, total size: {len(wav_data)} bytes")
+        
+        return wav_data
 
     async def test_connection(self) -> bool:
         """Test the connection to Gemini API."""
