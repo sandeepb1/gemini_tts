@@ -439,7 +439,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        super().__init__()
+        self._config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -449,8 +450,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         # Get current values from config entry
-        current_data = self.config_entry.data
-        current_options = self.config_entry.options
+        current_data = self._config_entry.data
+        current_options = self._config_entry.options
 
         # Create schema with current values as defaults
         options_schema = vol.Schema(

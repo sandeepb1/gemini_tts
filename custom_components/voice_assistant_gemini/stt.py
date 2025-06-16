@@ -287,6 +287,7 @@ async def async_setup_entry(
     stt_provider = GeminiSTTProvider(hass, config_entry, api_key, language, provider, model)
     
     async_add_entities([stt_provider])
+    return True
 
 
 class GeminiSTTProvider(SpeechToTextEntity):

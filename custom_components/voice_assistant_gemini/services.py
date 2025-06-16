@@ -396,7 +396,6 @@ async def async_setup_services(hass: HomeAssistant) -> bool:
                     audio_data = await client.generate_speech(text, voice)
                     
                     # Save preview audio to media folder
-                    import os
                     from homeassistant.util import dt as dt_util
                     
                     media_dir = hass.config.path("media", "voice_assistant_gemini")
@@ -566,14 +565,12 @@ async def async_setup_services(hass: HomeAssistant) -> bool:
             DOMAIN, "preview_voice", preview_voice_service, schema=PREVIEW_VOICE_SCHEMA
         )
         
-        _LOGGER.info("Voice Assistant Gemini services registered")
+        _LOGGER.info("Voice Assistant Gemini services registered successfully")
+        return True
     
     except Exception as err:
         _LOGGER.error("Failed to set up Voice Assistant Gemini services: %s", err, exc_info=True)
-        raise
-
-    # Explicitly return to indicate success
-    return True
+        return False
 
 
 async def _get_audio_from_source(hass: HomeAssistant, source: str) -> bytes:
