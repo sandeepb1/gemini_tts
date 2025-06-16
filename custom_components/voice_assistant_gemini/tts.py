@@ -619,6 +619,48 @@ class GeminiTTSProvider(TextToSpeechEntity):
             _LOGGER.error("Error getting supported voices: %s", err)
             return []
 
+    @property
+    def supported_voices(self) -> list[TTSVoice] | None:
+        """Return list of supported voices."""
+        # Return None to indicate async loading is needed
+        return None
+
+    def _pcm_to_wav(self, pcm_data: bytes) -> bytes:
+        """Convert raw PCM data to WAV format."""
+        import struct
+        import io
+        
+        # Gemini TTS returns 16-bit signed little-endian PCM at 24kHz, mono
+        sample_rate = 24000
+        channels = 1
+        bits_per_sample = 16
+        
+        # Calculate sizes
+        byte_rate = sample_rate * channels * bits_per_sample // 8
+        block_align = channels * bits_per_sample // 8
+        data_size = len(pcm_data)
+        file_size = 36 + data_size
+        
+        # Create WAV header
+        wav_header = struct.pack('<4sI4s4sIHHIIHH4sI',
+            b'RIFF',           # ChunkID
+            file_size,         # ChunkSize
+            b'WAVE',           # Format
+            b'fmt ',           # Subchunk1ID
+            16,                # Subchunk1Size (PCM)
+            1,                 # AudioFormat (PCM)
+            channels,          # NumChannels
+            sample_rate,       # SampleRate
+            byte_rate,         # ByteRate
+            block_align,       # BlockAlign
+            bits_per_sample,   # BitsPerSample
+            b'data',           # Subchunk2ID
+            data_size          # Subchunk2Size
+        )
+        
+        # Combine header and data
+        return wav_header + pcm_data
+
     async def async_get_tts_audio(
         self, message: str, language: str, options: dict[str, Any] | None = None
     ) -> TtsAudioType:
@@ -639,7 +681,18 @@ class GeminiTTSProvider(TextToSpeechEntity):
                 message, voice, speaking_rate, pitch, volume_gain_db, ssml
             )
             
-            return ("mp3", audio_data)
+            # Ensure we return proper audio format
+            if not audio_data:
+                raise RuntimeError("No audio data received from TTS service")
+            
+            # Gemini TTS returns raw PCM audio data (16-bit signed little-endian at 24kHz)
+            # We need to convert it to a proper WAV format for Home Assistant
+            if self.provider == "gemini_tts":
+                # Convert raw PCM to WAV format
+                wav_data = self._pcm_to_wav(audio_data)
+                return ("wav", wav_data)
+            else:
+                return ("mp3", audio_data)
         
         except Exception as err:
             _LOGGER.error("TTS synthesis error: %s", err)

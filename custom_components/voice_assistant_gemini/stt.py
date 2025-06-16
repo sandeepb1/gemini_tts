@@ -331,6 +331,21 @@ class GeminiSTTProvider(SpeechToTextEntity):
         """Return list of supported codecs."""
         return ["pcm", "mp3", "flac", "opus"]
 
+    @property
+    def supported_bit_rates(self) -> list[int]:
+        """Return list of supported bit rates."""
+        return [8000, 16000, 22050, 44100, 48000]
+
+    @property
+    def supported_channels(self) -> list[int]:
+        """Return list of supported channels."""
+        return [1, 2]
+
+    @property
+    def supported_sample_rates(self) -> list[int]:
+        """Return list of supported sample rates."""
+        return [8000, 16000, 22050, 44100, 48000]
+
     async def async_process_audio_stream(
         self, metadata: SpeechMetadata, stream
     ) -> SpeechResult:
