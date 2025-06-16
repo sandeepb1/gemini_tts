@@ -48,15 +48,21 @@ _LOGGER = logging.getLogger(__name__)
 @callback
 def async_register_websocket_api(hass: HomeAssistant) -> None:
     """Register WebSocket API commands."""
-    websocket_api.async_register_command(hass, ws_list_voices)
-    websocket_api.async_register_command(hass, ws_transcribe)
-    websocket_api.async_register_command(hass, ws_synthesize)
-    websocket_api.async_register_command(hass, ws_converse)
-    websocket_api.async_register_command(hass, ws_get_session_history)
-    websocket_api.async_register_command(hass, ws_clear_session)
-    websocket_api.async_register_command(hass, ws_get_session_stats)
+    try:
+        _LOGGER.debug("Registering Voice Assistant Gemini WebSocket API commands")
+        websocket_api.async_register_command(hass, ws_list_voices)
+        websocket_api.async_register_command(hass, ws_transcribe)
+        websocket_api.async_register_command(hass, ws_synthesize)
+        websocket_api.async_register_command(hass, ws_converse)
+        websocket_api.async_register_command(hass, ws_get_session_history)
+        websocket_api.async_register_command(hass, ws_clear_session)
+        websocket_api.async_register_command(hass, ws_get_session_stats)
+        
+        _LOGGER.info("Voice Assistant Gemini WebSocket API registered")
     
-    _LOGGER.info("Voice Assistant Gemini WebSocket API registered")
+    except Exception as err:
+        _LOGGER.error("Failed to register Voice Assistant Gemini WebSocket API: %s", err, exc_info=True)
+        raise
 
 
 @websocket_api.websocket_command({
